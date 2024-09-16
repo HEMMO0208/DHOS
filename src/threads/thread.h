@@ -98,6 +98,8 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
 #endif
 
+   int64_t wake_up_time;
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -106,6 +108,8 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+bool is_thread_idle(struct thread* t);
 
 void thread_init (void);
 void thread_start (void);

@@ -71,6 +71,13 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+void
+is_thread_idle(struct thread* t)
+{
+  ASSERT(t != NULL)
+  return t == idle;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S

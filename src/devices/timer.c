@@ -88,16 +88,37 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+bool 
+sleep_list_fn (const struct list_elem *a, 
+               const struct list_elem *b,
+               void *aux)
+{
+  return list
+}
+
+void 
+push_sleep_list(struct thread* t, int64_t end)
+{
+  t -> wake_up_time = end;
+  list_insert_ordered(&sleep_list, &t->elem, sleep_list_fn, );
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
-
+  int64_t end = timer_ticks () + ticks;
+  struct thread* cur = thread_current();
+  
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+
+  if (is_thread_idle(cur))
+    while (timer_ticks() < end) 
+      thread_yield ();
+
+  else
+    push_sleep_list(cur, end);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
