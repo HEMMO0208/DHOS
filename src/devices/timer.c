@@ -90,20 +90,12 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-bool 
-sleep_list_fn (const struct list_elem *a, 
-               const struct list_elem *b,
-               void *aux UNUSED)
-{
-  return list_entry(a, struct thread, elem)->wake_up_time < list_entry(b, struct thread, elem)->wake_up_time;
-}
-
 void 
 push_sleep_list(struct thread* t, int64_t end)
 {
   enum intr_level old_level;
   t -> wake_up_time = end;
-  list_push_back(&sleep_list, &t->elem);
+  list_push_back(&sleep_list, &t->ready_elem);
 
   old_level = intr_disable ();
   thread_block();
@@ -201,27 +193,23 @@ timer_print_stats (void)
 static void 
 wake_up_thread()
 {
-  int64_t tick = timer_ticks();
-
   struct list_elem* it = list_begin(&sleep_list);
   struct list_elem* end = list_end(&sleep_list);
 
-  for (it = list_begin(&sleep_list); it != list_end(&sleep_list); it = list_next(it)) {
-    struct thread* t = list_entry(it, struct thread, elem);
+  int64_t tick = timer_ticks();
 
-    if (t->wake_up_time < tick) {
+  for (it; it != end;) {
+    struct thread* t = list_entry(it, struct thread, ready_elem);
+
+    if (t->wake_up_time <= tick) {
+      it = list_remove(it);
       thread_unblock(t);
+
+      continue;
     }
+
+    it = list_next(it);
   }
-
-  // for (it = list_begin(&sleep_list); it != end; it = list_next(it)) {
-  //   struct thread* t = list_entry(it, struct thread, elem);
-
-  //   if (t->wake_up_time < tick) {
-  //     list_remove(it);
-  //     break;
-  //   }
-  // }
 }
 
 /* Timer interrupt handler. */
