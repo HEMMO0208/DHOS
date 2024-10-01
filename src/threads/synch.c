@@ -189,14 +189,6 @@ lock_init (struct lock *lock)
   sema_init (&lock->semaphore, 1);
 }
 
-bool 
-donator_compare_fn (const struct list_elem *a, 
-                    const struct list_elem *b,
-                    void *aux UNUSED)
-{
-  return list_entry(a, struct thread, donator_elem)->priority > list_entry(b, struct thread, donator_elem)->priority;
-}
-
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -214,15 +206,15 @@ lock_acquire (struct lock *lock)
 
   struct thread* cur = thread_current();
   struct thread* holder = lock->holder;
+  int current_priority = cur->priority;
 
   if (holder != NULL) {
-    list_insert_ordered(&holder->donator, &cur->donator_elem, donator_compare_fn, NULL);
+    list_push_back(&holder->donator, &cur->donator_elem);
     cur->waiting_lock = lock;
-    lock->waiting_thread = cur;
 
     while(true) {
-      if (cur->priority > holder->priority)
-        holder->priority = cur->priority;
+      if (current_priority > holder->priority)
+        holder->priority = current_priority;
 
       if (holder->waiting_lock != NULL)
         holder = holder->waiting_lock->holder;
@@ -234,7 +226,6 @@ lock_acquire (struct lock *lock)
 
   sema_down (&lock->semaphore);
   lock->holder = cur;
-  lock->waiting_thread = NULL;
   cur->waiting_lock = NULL;
 }
 
@@ -270,20 +261,25 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   struct thread* cur = thread_current();
-  list_remove(&lock->waiting_thread->donator_elem);
-
-  cur->priority = cur->init_priority;
+  int max_priority = cur->init_priority;
 
   struct list_elem* it = list_begin(&cur->donator);
   struct list_elem* end = list_end(&cur->donator);
 
-  for(; it != end; it = list_next(it)){
+  for(; it != end;){
     struct thread* t = list_entry(it, struct thread, donator_elem);
 
-    if (t->priority > cur->priority)
-      cur->priority = t->priority;
+    if (t->waiting_lock == lock)
+      it = list_remove(it);
+      continue;
+
+    if (t->priority > max_priority)
+      max_priority = t->priority;
+
+    it = list_next(it);
   }
 
+  cur->priority = max_priority;
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

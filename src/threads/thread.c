@@ -216,6 +216,15 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  // 새로 만들어진 thread가 ready list에 추가되어 ready list의 순서가 변경되었을 경우
+  // i.e., 현재 thread의 priority가 ready_list의 최우선 thread의 그것보다 작을 경우 yield한다.
+  // ready_list는 비어있지 않다.
+  int current_priority = thread_current()->priority;
+  struct thread* front = list_entry(list_front(&ready_list), struct thread, elem);
+  
+  if (front->priority > current_priority)
+    thread_yield();
+
   return tid;
 }
 
@@ -350,7 +359,32 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread* cur = thread_current();
+  int max_priority = new_priority;
+
+  cur->init_priority = new_priority;
+
+  // max_priority는 max(max([x.priority] for x in donator), new_priority)로 설정된다.
+  struct list_elem* it = list_begin(&cur->donator);
+  struct list_elem* end = list_end(&cur->donator);
+
+  for(; it != end; it = list_next(it)){
+    struct thread* t = list_entry(it, struct thread, donator_elem);
+    
+    if (t->priority > max_priority)
+      max_priority = t->priority;
+  }
+  
+  cur->priority = max_priority;
+
+  // 현재 thread의 priority가 ready list의 최우선 thread의 그것보다 작다면, yield한다.
+  // thread_yield가 호출되면서 자동으로 ready list는 정렬된다.
+  if (!list_empty(&ready_list)){
+    struct thread* front = list_entry(list_begin(&ready_list), struct thread, elem);
+
+    if (max_priority < front->priority)
+      thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
