@@ -118,6 +118,9 @@ struct thread
 extern bool thread_mlfqs;
 
 bool is_thread_idle(struct thread* t);
+bool priority_comapre_fn (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+void sort_ready_list();
 
 void thread_init (void);
 void thread_start (void);

@@ -86,6 +86,14 @@ priority_comapre_fn (const struct list_elem *a,
   return list_entry(a, struct thread, elem)->priority > list_entry(b, struct thread, elem)->priority;
 }
 
+void sort_ready_list() {
+  enum intr_level old_level = intr_disable ();
+
+  if (!list_empty(&ready_list))
+    list_sort(&ready_list, priority_comapre_fn, NULL);
+  intr_set_level (old_level);
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
