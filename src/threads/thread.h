@@ -91,7 +91,7 @@ struct thread
     int init_priority;
 
     struct list_elem allelem;           /* List element for all threads list. */
-    struct list_elem ready_elem;
+    struct list_elem sleep_elem;
     
     struct lock* waiting_lock;
     struct list donator;
@@ -119,6 +119,10 @@ extern bool thread_mlfqs;
 
 bool is_thread_idle(struct thread* t);
 bool priority_comapre_fn (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+int priority_key_fn (const struct list_elem *a);
+
+bool thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
+void update_priority (void);
 
 void sort_ready_list();
 

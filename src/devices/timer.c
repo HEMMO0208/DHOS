@@ -95,7 +95,7 @@ push_sleep_list(struct thread* t, int64_t end)
 {
   enum intr_level old_level;
   t -> wake_up_time = end;
-  list_push_back(&sleep_list, &t->ready_elem);
+  list_push_back(&sleep_list, &t->sleep_elem);
 
   old_level = intr_disable ();
   thread_block();
@@ -199,7 +199,7 @@ wake_up_thread()
   int64_t tick = timer_ticks();
 
   for (it; it != end;) {
-    struct thread* t = list_entry(it, struct thread, ready_elem);
+    struct thread* t = list_entry(it, struct thread, sleep_elem);
 
     if (t->wake_up_time <= tick) {
       it = list_remove(it);

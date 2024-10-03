@@ -11,7 +11,6 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "threads/list-utils.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -88,56 +87,10 @@ priority_comapre_fn (const struct list_elem *a,
 }
 
 int 
-priority_key_fn (const struct list_elem *e)
+priority_key_fn (const struct list_elem *a)
 {
-  return list_entry(e, struct thread, elem)->priority;
+  return list_entry(a, struct thread, elem)->priority;
 }
-
-bool
-thread_compare_donate_priority (const struct list_elem *l, 
-				const struct list_elem *s, void *aux UNUSED)
-{
-	return list_entry (l, struct thread, donator_elem)->priority
-		 > list_entry (s, struct thread, donator_elem)->priority;
-}
-
-int 
-donator_key_fn (const struct list_elem *e)
-{
-  return list_entry(e, struct thread, donator_elem)->priority;
-}
-
-void
-update_priority (void)
-{
-  struct thread *cur = thread_current ();
-
-  cur->priority = cur->init_priority;
-  
-  if (!list_empty (&cur->donator)) {
-    // list_sort (&cur->donator, thread_compare_donate_priority, 0);
-    // struct thread *front = list_entry (list_front (&cur->donator), struct thread, donator_elem);
-
-    int max_priority = list_max_val(&cur->donator, donator_key_fn);
-
-    if (max_priority > cur->priority)
-      cur->priority = max_priority;
-  }
-}
-
-void 
-yield_if_need (void)
-{
-  if (list_empty(&ready_list))
-    return;
-
-  struct thread *cur = thread_current();
-  struct thread *front = list_entry (list_front (&ready_list), struct thread, elem);
-
-  if (cur->priority < front->priority)
-      thread_yield ();
-}
-
 
 void sort_ready_list() {
   enum intr_level old_level = intr_disable ();
@@ -421,11 +374,35 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->init_priority = new_priority;
-  
-  update_priority ();
+  struct thread* cur = thread_current();
+  enum intr_level old_level = intr_disable();
+  int max_priority = new_priority;
 
-  yield_if_need();
+  cur->init_priority = new_priority;
+
+  // max_priority는 max(max([x.priority] for x in donator), new_priority)로 설정된다.
+  struct list_elem* it = list_begin(&cur->donator);
+  struct list_elem* end = list_end(&cur->donator);
+
+  for(; it != end; it = list_next(it)){
+    struct thread* t = list_entry(it, struct thread, donator_elem);
+    
+    if (t->priority > max_priority)
+      max_priority = t->priority;
+  }
+  
+  cur->priority = max_priority;
+
+  // 현재 thread의 priority가 ready list의 최우선 thread의 그것보다 작다면, yield한다.
+  // thread_yield가 호출되면서 자동으로 ready list는 정렬된다.
+  if (!list_empty(&ready_list)){
+    struct thread* front = list_entry(list_begin(&ready_list), struct thread, elem);
+
+    if (max_priority < front->priority)
+      thread_yield();
+  }
+
+  intr_set_level(old_level);
 }
 
 /* Returns the current thread's priority. */
