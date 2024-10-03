@@ -82,6 +82,21 @@ list_max_val(struct list *list, list_key_func *fn)
   return max_val;
 }
 
+void 
+list_apply (struct list *list, list_apply_func *fn)
+{
+  struct list_elem *it = list_begin(list);
+  struct list_elem *end = list_end(list);
+
+  if(it == end)
+    return;
+
+  for (; it != end; it = list_next(it)){
+    fn(it);
+  }
+}
+
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -119,7 +134,7 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       list_push_back (&sema->waiters, &thread_current ()->elem);
-      thread_block ();
+      thread_block();
     }
   sema->value--;
   intr_set_level (old_level);
@@ -268,11 +283,15 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   struct thread *cur = thread_current ();
+
+  if (thread_mlfqs) {
+    sema_down(&lock->semaphore);
+    lock->holder = cur;
+    return;
+  }
+  
   if (lock->holder != NULL) {
     cur->waiting_lock = lock;
-
-    // list_insert_ordered (&lock->holder->donator, &cur->donator_elem, 
-    // 			thread_compare_donate_priority, 0);
 
     list_push_back(&lock->holder->donator, &cur->donator_elem);
 
@@ -280,7 +299,6 @@ lock_acquire (struct lock *lock)
   }
 
   sema_down (&lock->semaphore);
-  
   cur->waiting_lock = NULL;
   lock->holder = cur;
 }
@@ -325,8 +343,6 @@ remove_donator (struct lock *lock)
   }
 }
 
-
-
 /* Releases LOCK, which must be owned by the current thread.
 
    An interrupt handler cannot acquire a lock, so it does not
@@ -338,10 +354,13 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  remove_donator(lock);
-  update_priority();
-  
   lock->holder = NULL;
+
+  if(!thread_mlfqs){
+    remove_donator(lock);
+    update_priority();
+  }
+
   sema_up (&lock->semaphore);
 }
 
@@ -425,20 +444,6 @@ waiter_key_fn (const struct list_elem *a)
   return list_entry(front, struct thread, elem)->priority;
 }
 
-bool 
-waiter_compare_fn (const struct list_elem *a, 
-                    const struct list_elem *b,
-                    void *aux UNUSED)
-{
-  // a, b에 상응하는 sema의 waiter list는 cond_wait를 호출하는 thread가 저장되어 있다. 나머지는 있을 수 없다.
-  struct list_elem* LHS = list_front(&list_entry(a, struct semaphore_elem, elem)->semaphore.waiters);
-  struct list_elem* RHS = list_front(&list_entry(b, struct semaphore_elem, elem)->semaphore.waiters);
-
-  return list_entry(LHS, struct thread, elem)->priority > list_entry(RHS, struct thread, elem)->priority;
-}
-
-
-
 /* If any threads are waiting on COND (protected by LOCK), then
    this function signals one of them to wake up from its wait.
    LOCK must be held before calling this function.
@@ -455,8 +460,6 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (lock_held_by_current_thread (lock));
 
   if (!list_empty (&cond->waiters)) {
-    // struct list_elem* max_elem = list_min(&cond->waiters, waiter_compare_fn, NULL);
-    // list_remove(max_elem);
     struct list_elem* max_elem = list_pop_max(&cond->waiters, waiter_key_fn);
     sema_up (&list_entry (max_elem, struct semaphore_elem, elem)->semaphore);
   }

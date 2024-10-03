@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 
+#include "threads/fixed-point.h"
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -90,6 +92,9 @@ struct thread
     int priority;                       /* Priority. */
     int init_priority;
 
+    int nice;
+    fixed recent_cpu;
+
     struct list_elem allelem;           /* List element for all threads list. */
     struct list_elem sleep_elem;
     
@@ -123,6 +128,9 @@ int priority_key_fn (const struct list_elem *a);
 
 bool thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
 void update_priority (void);
+
+void mlfqs_priority (struct thread *t, void *aux UNUSED);
+void mlfqs_recent_cpu (struct thread *t, void *aux UNUSED);
 
 void sort_ready_list();
 
