@@ -546,50 +546,6 @@ thread_get_priority (void)
 {
   return thread_current ()->priority;
 }
-
-// /* Sets the current thread's nice value to NICE. */
-// void
-// thread_set_nice (int nice) 
-// {
-//   enum intr_level old_level = intr_disable();
-//   int tmp = thread_current()->nice = nice;
-//   intr_set_level(old_level);
-
-//   return tmp;
-// }
-
-// /* Returns the current thread's nice value. */
-// int
-// thread_get_nice (void) 
-// {
-//   enum intr_level old_level = intr_disable();
-//   int ret = thread_current()->nice;
-//   intr_set_level(old_level);
-
-//   return ret;
-// }
-
-// /* Returns 100 times the system load average. */
-// int
-// thread_get_load_avg (void) 
-// {
-//   enum intr_level old_level = intr_disable();
-//   fixed ret = FMULI(load_avg, 100);
-//   intr_set_level(old_level);
-
-//   return FROUND(ret);
-// }
-
-// /* Returns 100 times the current thread's recent_cpu value. */
-// int
-// thread_get_recent_cpu (void) 
-// {
-//   enum intr_level old_level = intr_disable();
-//   fixed ret = FMULI(thread_current()->recent_cpu, 100);
-//   intr_set_level(old_level);
-
-//   return FROUND(ret);
-// }
 
 /* Idle thread.  Executes when no other thread is ready to run.
 

@@ -27,7 +27,7 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
-static void wake_up_thread();
+static void wake_up_thread (void);
 
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
@@ -223,15 +223,15 @@ timer_interrupt (struct intr_frame *args UNUSED)
   if (thread_mlfqs) 
   {
     incr_recent_cpu ();
+
     if (ticks % TIMER_FREQ == 0)
     {
       mlfqs_load_avg ();
-      // mlfqs_update_recent_cpu ();
       thread_foreach(mlfqs_recent_cpu, NULL);
     }
+
     if (ticks % 4 == 0) 
     {
-      // mlfqs_update_priority ();
       thread_foreach(mlfqs_priority, NULL);
       sort_ready_list();
     }

@@ -82,21 +82,6 @@ list_max_val(struct list *list, list_key_func *fn)
   return max_val;
 }
 
-void 
-list_apply (struct list *list, list_apply_func *fn)
-{
-  struct list_elem *it = list_begin(list);
-  struct list_elem *end = list_end(list);
-
-  if(it == end)
-    return;
-
-  for (; it != end; it = list_next(it)){
-    fn(it);
-  }
-}
-
-
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -263,8 +248,11 @@ donate_priority (void)
     if (holder->waiting_lock == NULL)
       break;
 
+    else
       holder = holder->waiting_lock->holder;
   }
+
+  sort_ready_list();
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
