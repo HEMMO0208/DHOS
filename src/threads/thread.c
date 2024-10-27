@@ -237,7 +237,7 @@ thread_get_recent_cpu (void)
 void 
 yield_if_need (void)
 {
-  if (list_empty(&ready_list))
+  if (list_empty(&ready_list) || intr_context())
     return;
 
   struct thread *cur = thread_current();

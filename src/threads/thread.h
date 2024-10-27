@@ -123,16 +123,18 @@ struct thread
 extern bool thread_mlfqs;
 
 bool is_thread_idle(struct thread* t);
-bool priority_comapre_fn (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool priority_compare_fn (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 int priority_key_fn (const struct list_elem *a);
-
-bool thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
+int donator_key_fn (const struct list_elem *e);
 void update_priority (void);
 
 void mlfqs_priority (struct thread *t, void *aux UNUSED);
 void mlfqs_recent_cpu (struct thread *t, void *aux UNUSED);
+void mlfqs_load_avg (void);
+void incr_recent_cpu (void);
 
-void sort_ready_list();
+void yield_if_need (void);
+void sort_ready_list (void);
 
 void thread_init (void);
 void thread_start (void);

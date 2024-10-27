@@ -24,6 +24,10 @@ struct lock
     struct semaphore semaphore; /* Binary semaphore controlling access. */
   };
 
+void donate_priority (void);
+void remove_donator (struct lock *lock);
+int waiter_key_fn (const struct list_elem *a);
+
 void lock_init (struct lock *);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
