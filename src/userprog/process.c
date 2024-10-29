@@ -44,6 +44,17 @@ process_execute (const char *command)
   tid = thread_create (result->argv[0], PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+
+  struct thread* child = get_child(tid);
+  if (child == NULL)
+    return TID_ERROR;
+
+  sema_down(&child->load_sema);
+  if (!child->is_loaded){
+    tid = TID_ERROR;
+    sema_up(tid);
+  }
+  
   return tid;
 }
 
@@ -117,6 +128,7 @@ start_process (void *file_name_)
 {
   struct parse_result *result = file_name_;
   struct intr_frame if_;
+  struct thread* cur = thread_current();
   bool success;
 
   /* Initialize interrupt frame and load executable. */
@@ -128,15 +140,19 @@ start_process (void *file_name_)
 
   construct_stack(result, &if_.esp);
 
-  int i =0;
-  for(; i < 5; ++i){
-    printf("%x", ((int*)if_.esp)[i]);
-  }
-
   /* If load failed, quit. */
   palloc_free_page (result);
-  if (!success) 
+
+  cur->is_loaded = success;
+
+  // 로드가 다 되었음을 알린다.
+  sema_up(&cur->load_sema);
+
+  // 로드 실패 시, 부모가 확인한 후 죽는다.
+  if (!success) {
+    sema_down(&cur->exit_sema);
     thread_exit ();
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -158,9 +174,20 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  return -1;
+  struct thread *child = get_child(child_tid);
+  int exit_status;
+
+  if (child == NULL)
+    return -1;
+
+  sema_down(&child->wait_sema);
+  exit_status = child->exit_status;
+
+  sema_up(&child->exit_sema);
+
+  return exit_status;
 }
 
 /* Free the current process's resources. */
@@ -169,6 +196,20 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  
+  // 모든 자녀의 죽음을 허용한다.
+  struct list_elem *it = list_begin(&cur->list_children);
+  struct list_elem *end = list_end(&cur->list_children);
+
+  for(; it != end; it = list_next(it)){
+    struct thread *child = list_entry(it, struct thread, child_elem);
+    sema_up(&child->exit_sema);
+  }
+
+  // 자녀 exit-> 부모 wait -> 자녀 die
+  sema_up(&cur->wait_sema);
+  sema_down(&cur->exit_sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

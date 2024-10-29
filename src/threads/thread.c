@@ -546,6 +546,23 @@ thread_get_priority (void)
 {
   return thread_current ()->priority;
 }
+
+struct 
+thread* get_child(tid_t child_tid)
+{
+  struct thread *cur = thread_current();
+  struct list_elem *it = list_begin(&cur->list_children);
+  struct list_elem *end = list_end(&cur->list_children);
+
+  for (; it != end; it = list_next(it)) {
+    struct thread *t = list_entry(it, struct thread, child_elem);
+
+    if (t->tid == child_tid)
+      return t;
+  }
+
+  return NULL;
+}
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -639,7 +656,14 @@ init_thread (struct thread *t, const char *name, int priority)
 
   t->nice = 0;
   t->recent_cpu = 0;
+  t->is_loaded = 0;
 
+  sema_init(&t->wait_sema, 0);
+  sema_init(&t->exit_sema, 0);
+  sema_init(&t->load_sema, 0);
+
+  list_init(&t->list_children);
+  list_init(&t->list_file);
   list_init(&t->donator);
 
   old_level = intr_disable ();

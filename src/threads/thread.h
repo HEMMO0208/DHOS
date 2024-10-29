@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 
+#include "threads/synch.h"
 #include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
@@ -92,15 +93,27 @@ struct thread
     int priority;                       /* Priority. */
     int init_priority;
 
+    int is_loaded;
     int nice;
     fixed recent_cpu;
 
     struct list_elem allelem;           /* List element for all threads list. */
     struct list_elem sleep_elem;
+    struct list_elem donator_elem;
+    struct list_elem child_elem;
     
     struct lock* waiting_lock;
+
     struct list donator;
-    struct list_elem donator_elem;
+    struct list list_file;
+    struct list list_children;
+
+    struct semaphore load_sema;
+	 struct semaphore wait_sema;
+	 struct semaphore exit_sema;
+
+    int next_fd;
+    int exit_status;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -166,5 +179,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+struct thread* get_child(tid_t child_tid);
 
 #endif /* threads/thread.h */
