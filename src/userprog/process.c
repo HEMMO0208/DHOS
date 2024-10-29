@@ -26,7 +26,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *command) 
 {
   char *fn_copy;
   tid_t tid;
@@ -36,13 +36,78 @@ process_execute (const char *file_name)
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (fn_copy, command, PGSIZE);
+
+  struct parse_result* result = parse_command(fn_copy);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (result->argv[0], PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
+}
+
+struct parse_result* parse_command(char* command){
+  char* tmp = palloc_get_page(PAL_ZERO);
+  strlcpy(tmp, command, PGSIZE);
+  struct parse_result* result = (struct parse_result*)command;
+  result->argc = 0;
+  
+  const char *delim = " ";
+  char *save_ptr = NULL;
+  char *token = strtok_r ((char*)tmp, delim, &save_ptr);
+  
+  size_t len; 
+  char *base = &result->data_start;
+  char *next = base;
+
+  while (token != NULL && result->argc < MAX_ARGC){
+    len = strlcpy(next, token, 128);
+    
+    result->argv[result->argc] = next;
+    result->argc++;
+    next += (len + 1);
+    token = strtok_r (NULL, delim, &save_ptr);
+  }
+
+  result->argv[result->argc] = NULL;
+  result->data_size = next - base;
+
+  palloc_free_page (tmp);
+  return result;
+}
+
+static void push_stack(char **rsp, void* val, int size){
+  *rsp -= size;
+  memcpy(*rsp, val, size);
+}
+
+static void construct_stack(struct parse_result* command, char **rsp){
+  char *base = &command->data_start;
+
+  push_stack(rsp, base, command->data_size);
+  char *stack_base = *rsp;
+
+  int pad_size = (4 - (command->data_size % 4)) % 4;
+
+  int i = 0;
+  for (; i < pad_size; ++i) {
+    char val = 0;
+    push_stack(rsp, &val, sizeof(val));
+  }
+
+  for (i = command->argc; i >= 0; --i){
+    char* val = stack_base + (command->argv[i] - base);
+    push_stack(rsp, &val, sizeof(val));
+  }
+
+  stack_base = *rsp;
+
+  push_stack(rsp, &stack_base, sizeof(stack_base));
+  push_stack(rsp, &command->argc, sizeof(command->argc));
+  
+  void* ret = NULL;
+  push_stack(rsp, &ret, sizeof(ret));
 }
 
 /* A thread function that loads a user process and starts it
@@ -50,7 +115,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  struct parse_result *result = file_name_;
   struct intr_frame if_;
   bool success;
 
@@ -59,10 +124,17 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (result->argv[0], &if_.eip, &if_.esp);
+
+  construct_stack(result, &if_.esp);
+
+  int i =0;
+  for(; i < 5; ++i){
+    printf("%x", ((int*)if_.esp)[i]);
+  }
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  palloc_free_page (result);
   if (!success) 
     thread_exit ();
 
