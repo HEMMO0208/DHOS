@@ -1,16 +1,30 @@
 #ifndef USERPROG_PROCESS_H
 #define USERPROG_PROCESS_H
 
+#include <list.h>
 #define MAX_ARGC 128
+
+// #define push_stack(rsp, val) push_stack(&rsp, &val, sizeof(val))
+// #define pop_stack(rsp, dst) pop_stack(&rsp, &dst, sizeof(dst))
 
 struct parse_result{
     int argc;
-    char* argv[MAX_ARGC];
+    char *argv[MAX_ARGC];
     int data_size;
+    struct thread *parent;
     char data_start;
 };
 
+struct file_elem{
+    struct file *file;
+    struct list_elem elem;
+    int fd;
+};
+
 #include "threads/thread.h"
+
+void push_stack(char **rsp, void* val, int size);
+void pop_stack(char **rsp, void* dst, int size);
 
 struct parse_result* parse_command(char* command);
 

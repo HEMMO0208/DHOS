@@ -28,6 +28,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *command) 
 {
+  struct thread* cur = thread_current();
   char *fn_copy;
   tid_t tid;
 
@@ -39,20 +40,28 @@ process_execute (const char *command)
   strlcpy (fn_copy, command, PGSIZE);
 
   struct parse_result* result = parse_command(fn_copy);
+  result->parent = cur;
+
+  // int i = 0;
+  // printf("%d\n", result->argc);
+  // for (; i < result->argc; ++i){
+  //   printf("%s\n", result->argv[i]);
+  // }
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (result->argv[0], PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
 
+  sema_down(&cur->load_sema);
+
   struct thread* child = get_child(tid);
   if (child == NULL)
     return TID_ERROR;
 
-  sema_down(&child->load_sema);
   if (!child->is_loaded){
     tid = TID_ERROR;
-    sema_up(tid);
+    sema_up(&child->exit_sema);
   }
   
   return tid;
@@ -81,16 +90,20 @@ struct parse_result* parse_command(char* command){
     token = strtok_r (NULL, delim, &save_ptr);
   }
 
-  result->argv[result->argc] = NULL;
   result->data_size = next - base;
 
   palloc_free_page (tmp);
   return result;
 }
 
-static void push_stack(char **rsp, void* val, int size){
+void push_stack(char **rsp, void* val, int size){
   *rsp -= size;
   memcpy(*rsp, val, size);
+}
+
+void pop_stack(char **rsp, void* dst, int size){
+  memcpy(dst, *rsp, size);
+  *rsp += size;
 }
 
 static void construct_stack(struct parse_result* command, char **rsp){
@@ -100,6 +113,7 @@ static void construct_stack(struct parse_result* command, char **rsp){
   char *stack_base = *rsp;
 
   int pad_size = (4 - (command->data_size % 4)) % 4;
+  pad_size += sizeof(char*);
 
   int i = 0;
   for (; i < pad_size; ++i) {
@@ -107,7 +121,7 @@ static void construct_stack(struct parse_result* command, char **rsp){
     push_stack(rsp, &val, sizeof(val));
   }
 
-  for (i = command->argc; i >= 0; --i){
+  for (i = command->argc - 1; i >= 0; --i){
     char* val = stack_base + (command->argv[i] - base);
     push_stack(rsp, &val, sizeof(val));
   }
@@ -136,20 +150,24 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
   success = load (result->argv[0], &if_.eip, &if_.esp);
 
-  construct_stack(result, &if_.esp);
-
-  /* If load failed, quit. */
-  palloc_free_page (result);
-
-  cur->is_loaded = success;
+  // 성공시 stack construct
+  if (success) {
+    construct_stack(result, &if_.esp);
+    list_push_back(&result->parent->list_children, &cur->child_elem);
+  }
 
   // 로드가 다 되었음을 알린다.
-  sema_up(&cur->load_sema);
+  cur->is_loaded = success;
+  sema_up(&result->parent->load_sema);
+  
+  palloc_free_page (result);
 
   // 로드 실패 시, 부모가 확인한 후 죽는다.
   if (!success) {
+    cur->exit_status = -1;
     sema_down(&cur->exit_sema);
     thread_exit ();
   }
@@ -179,15 +197,29 @@ process_wait (tid_t child_tid)
   struct thread *child = get_child(child_tid);
   int exit_status;
 
+  ASSERT(child != NULL)
+
   if (child == NULL)
     return -1;
 
   sema_down(&child->wait_sema);
+
   exit_status = child->exit_status;
+  list_remove(&child->child_elem);
 
   sema_up(&child->exit_sema);
 
   return exit_status;
+}
+
+void close_all_files(struct thread *cur) {
+  struct list_elem *it = list_begin(&cur->list_file);
+  struct list_elem *end = list_end(&cur->list_file);
+
+  for(; it != end; it = list_next(it)) {
+    struct file_elem *file = list_entry(it, struct file_elem, elem);
+    file_close(&file->file);
+  }
 }
 
 /* Free the current process's resources. */
@@ -196,16 +228,21 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  close_all_files(cur);
 
-  
   // 모든 자녀의 죽음을 허용한다.
   struct list_elem *it = list_begin(&cur->list_children);
   struct list_elem *end = list_end(&cur->list_children);
 
-  for(; it != end; it = list_next(it)){
+  for(; it != end;){
     struct thread *child = list_entry(it, struct thread, child_elem);
-    sema_up(&child->exit_sema);
+    it = list_next(it);
+
+    process_wait(child->tid);
   }
+
+  // 프린트
+  printf("%s: exit(%d)\n", cur->name, cur->exit_status);
 
   // 자녀 exit-> 부모 wait -> 자녀 die
   sema_up(&cur->wait_sema);
