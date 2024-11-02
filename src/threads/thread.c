@@ -658,6 +658,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->nice = 0;
   t->recent_cpu = 0;
   t->is_loaded = 0;
+  t->exec_file = NULL;
+
+  init_bit_vector(&t->fd_map);
 
   sema_init(&t->wait_sema, 0);
   sema_init(&t->exit_sema, 0);

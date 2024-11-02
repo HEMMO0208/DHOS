@@ -5,6 +5,7 @@
 #include "threads/thread.h"
 
 void syscall_init (void);
+
 struct lock file_sys_lock;
 
 static struct file_elem *

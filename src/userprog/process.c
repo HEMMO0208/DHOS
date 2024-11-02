@@ -42,18 +42,14 @@ process_execute (const char *command)
   struct parse_result* result = parse_command(fn_copy);
   result->parent = cur;
 
-  // int i = 0;
-  // printf("%d\n", result->argc);
-  // for (; i < result->argc; ++i){
-  //   printf("%s\n", result->argv[i]);
-  // }
-
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (result->argv[0], PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
 
+  printf("%s waits to load %s\n", cur->name, result->argv[0]); 
   sema_down(&cur->load_sema);
+  printf("%s ends to wait to load\n", cur->name); 
 
   struct thread* child = get_child(tid);
   if (child == NULL)
@@ -197,8 +193,6 @@ process_wait (tid_t child_tid)
   struct thread *child = get_child(child_tid);
   int exit_status;
 
-  ASSERT(child != NULL)
-
   if (child == NULL)
     return -1;
 
@@ -216,9 +210,12 @@ void close_all_files(struct thread *cur) {
   struct list_elem *it = list_begin(&cur->list_file);
   struct list_elem *end = list_end(&cur->list_file);
 
-  for(; it != end; it = list_next(it)) {
-    struct file_elem *file = list_entry(it, struct file_elem, elem);
-    file_close(&file->file);
+  for(; it != end;) {
+    struct file_elem *f_elem = list_entry(it, struct file_elem, elem);
+    it = list_remove(it);
+
+    file_close(f_elem->file);
+    palloc_free_page(f_elem);
   }
 }
 
@@ -229,6 +226,7 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   close_all_files(cur);
+  file_close(cur->exec_file);
 
   // 모든 자녀의 죽음을 허용한다.
   struct list_elem *it = list_begin(&cur->list_children);
@@ -365,6 +363,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  // printf("load: %s\n", file_name);
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -372,16 +372,37 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  
   file = filesys_open (file_name);
+  t->exec_file = file;
+  
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 
+  file_deny_write(file);
+
+  // if (!strcmp(file_name, "child-rox")){
+  //   printf("%d\n", file_read (file, &ehdr, sizeof ehdr));
+  //   printf("%d\n", memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7));
+  //   printf("%d\n", ehdr.e_type);
+  //   printf("%d\n", ehdr.e_machine);
+  //   printf("%d\n", ehdr.e_version);
+  //   printf("%d\n", ehdr.e_phentsize);
+  //   printf("%d\n", ehdr.e_phnum);
+  // }
+  file_read (file, &ehdr, sizeof ehdr);
+
+  for (i = 0; i < sizeof ehdr; ++i)
+    printf("%x ", ((char*)&ehdr)[i]);
+    printf("\n");
+
   /* Read and verify executable header. */
-  if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
-      || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
+  // if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
+  if(
+      memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
       || ehdr.e_type != 2
       || ehdr.e_machine != 3
       || ehdr.e_version != 1
@@ -457,12 +478,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
-
   success = true;
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  // printf("success: %d\n", success);
   return success;
 }
 

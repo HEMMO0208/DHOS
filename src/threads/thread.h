@@ -4,9 +4,9 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-
 #include "threads/synch.h"
 #include "threads/fixed-point.h"
+#include "userprog/bit_vector.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -21,6 +21,9 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
+
+#include "userprog/process.h"
+#include "userprog/syscall.h"
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -111,8 +114,9 @@ struct thread
     struct semaphore load_sema;
 	 struct semaphore wait_sema;
 	 struct semaphore exit_sema;
-
-    int next_fd;
+   
+    struct file *exec_file;
+    struct bit_vector fd_map;
     int exit_status;
 
     /* Shared between thread.c and synch.c. */
