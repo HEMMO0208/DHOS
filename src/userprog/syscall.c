@@ -187,6 +187,7 @@ syscall_handler (struct intr_frame *f)
       parse(rsp, fd);
       parse(rsp, position);
 
+      userprog_seek(fd, position);
   	  break;
   	}
   	case 11:
@@ -278,17 +279,15 @@ userprog_create (const char *file, unsigned initial_size)
 static bool
 userprog_remove (const char *file)
 {
-  bool retval;
-	if(is_memory_valid(file)) {
-    lock_acquire (&file_sys_lock);
-    retval = filesys_remove (file);
-    lock_release (&file_sys_lock);
-    return retval;
-  }
-  else
+  bool ret;
+  
+	if(!is_memory_valid(file))
     userprog_exit (-1);
 
-  return false;
+  lock_acquire (&file_sys_lock);
+  ret = filesys_remove (file);
+  lock_release (&file_sys_lock);
+  return ret;
 }
 
 struct file 
@@ -316,8 +315,6 @@ userprog_open (const char *file)
 
   if (new->file == NULL)
     return -1;
-
-  printf("opener: %s opens %s, fd: %d\n", cur->name, file, fd);
 
   if (strcmp(file, cur->name) == 0){
     file_deny_write(new->file);
@@ -376,13 +373,6 @@ userprog_read (int fd, void *buffer, unsigned size)
     bytes_read = file_read (f_elem->file, buffer, size);
     lock_release (&file_sys_lock);
 
-    printf("%d reads %d size\n", fd, size);
-
-    int i = 0;
-    for(; i < size; ++i)
-      printf("%x ", ((char*)buffer)[i]);
-    printf("\n");
-
     return bytes_read;
   }
 }
@@ -391,21 +381,13 @@ static int
 userprog_write (int fd, const void *buffer, unsigned size)
 {
   int bytes_written = 0;
-  char *bufChar = NULL;
   struct file_elem *f_elem = NULL;
+
 	if (!is_memory_valid(buffer))
 		userprog_exit (-1);
 
-  bufChar = (char *)buffer;
   if(fd == 1) {
-    /* break up large buffers */
-    while(size > BUF_MAX) {
-      putbuf(bufChar, BUF_MAX);
-      bufChar += BUF_MAX;
-      size -= BUF_MAX;
-      bytes_written += BUF_MAX;
-    }
-    putbuf(bufChar, size);
+    putbuf(buffer, size);
     bytes_written += size;
     return bytes_written;
   }
@@ -414,18 +396,6 @@ userprog_write (int fd, const void *buffer, unsigned size)
     f_elem = getFile (fd);
     if (f_elem == NULL)
       return 0;
-
-
-
-    printf("writer: %s\n", thread_current()->name);
-    int i = 0;
-    for (i = 0; i < size; ++i){
-      printf("%x ", ((char*)buffer)[i]);
-    }
-    printf("\n");
-      
-
-
 
     lock_acquire (&file_sys_lock);
     bytes_written = file_write (f_elem->file, buffer, size);
@@ -437,10 +407,10 @@ userprog_write (int fd, const void *buffer, unsigned size)
 static void
 userprog_seek (int fd, unsigned position)
 {
-	struct file_elem *f_elem = NULL;
-  f_elem = getFile (fd);
+	struct file_elem *f_elem = getFile (fd);
   if (f_elem == NULL)
     return;
+
   lock_acquire (&file_sys_lock);
   file_seek (f_elem->file, position);
   lock_release (&file_sys_lock);
@@ -449,15 +419,17 @@ userprog_seek (int fd, unsigned position)
 static unsigned
 userprog_tell (int fd)
 {
-  unsigned retval;
-	struct file_elem *f_elem = NULL;
-  f_elem = getFile (fd);
+  unsigned ret;
+
+	struct file_elem *f_elem = getFile (fd);
   if (f_elem == NULL)
     return 0;
+
   lock_acquire (&file_sys_lock);
-  retval = file_tell (f_elem->file);
+  ret = file_tell (f_elem->file);
   lock_release (&file_sys_lock);
-  return retval;
+
+  return ret;
 }
 
 static void
@@ -465,8 +437,6 @@ userprog_close (int fd)
 {
 	struct thread *cur = thread_current();
   struct file_elem *f_elem = NULL;
-
-  printf("%s closes %d\n", thread_current(), fd);
 
   f_elem = getFile (fd);
   if (f_elem == NULL)
