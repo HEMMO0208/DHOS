@@ -208,7 +208,7 @@ syscall_handler (struct intr_frame *f)
   }
 }
 
- struct file_elem *
+struct file_elem *
 getFile (int fd)
 {
   struct thread *t = thread_current ();
@@ -226,13 +226,13 @@ getFile (int fd)
 }
 
 
- void
+void
 sys_halt ()
 {
 	shutdown_power_off ();
 }
 
- void
+void
 sys_exit (int status)
 {
   struct thread *cur = thread_current ();
@@ -240,7 +240,7 @@ sys_exit (int status)
 	thread_exit ();
 }
 
- tid_t
+tid_t
 sys_exec (const char *cmd_line)
 {
   tid_t child_tid = TID_ERROR;
@@ -253,13 +253,13 @@ sys_exec (const char *cmd_line)
 	return child_tid;
 }
 
- int
+int
 sys_wait (tid_t tid)
 {
   return process_wait (tid);
 }
 
- bool
+bool
 sys_create (const char *file, unsigned initial_size)
 {
   bool retval;
@@ -275,7 +275,7 @@ sys_create (const char *file, unsigned initial_size)
   return false;
 }
 
- bool
+bool
 sys_remove (const char *file)
 {
   bool ret;
@@ -296,7 +296,7 @@ struct file
     bool deny_write;            /* Has file_deny_write() been called? */
   };
 
- int
+int
 sys_open (const char *file)
 {
 	if (!is_memory_valid(file))
@@ -325,7 +325,7 @@ sys_open (const char *file)
   return new->fd;
 }
 
- int
+int
 sys_filesize (int fd)
 {
   int ret;
@@ -343,7 +343,7 @@ sys_filesize (int fd)
   return ret;
 }
 
- int
+int
 sys_read (int fd, void *buffer, unsigned size)
 {
   int bytes_read = 0;
@@ -376,7 +376,7 @@ sys_read (int fd, void *buffer, unsigned size)
   }
 }
 
- int
+int
 sys_write (int fd, const void *buffer, unsigned size)
 {
   int bytes_written = 0;
@@ -403,7 +403,7 @@ sys_write (int fd, const void *buffer, unsigned size)
   }
 }
 
- void
+void
 sys_seek (int fd, unsigned position)
 {
 	struct file_elem *f_elem = getFile (fd);
@@ -415,7 +415,7 @@ sys_seek (int fd, unsigned position)
   lock_release (&file_sys_lock);
 }
 
- unsigned
+unsigned
 sys_tell (int fd)
 {
   unsigned ret;
@@ -431,7 +431,7 @@ sys_tell (int fd)
   return ret;
 }
 
- void
+void
 sys_close (int fd)
 {
 	struct thread *cur = thread_current();
