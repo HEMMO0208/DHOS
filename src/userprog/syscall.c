@@ -14,6 +14,7 @@
 #define BUF_MAX 200
 #define parse(rsp, dst) exit_if_not_valid(*rsp); pop_stack((rsp), &(dst), sizeof(dst))
 
+static struct lock file_sys_lock;
 static void syscall_handler (struct intr_frame *);
 
 void

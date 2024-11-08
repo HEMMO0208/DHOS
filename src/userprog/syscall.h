@@ -6,8 +6,6 @@
 
 void syscall_init (void);
 
-struct lock file_sys_lock;
-
 struct file_elem *
 getFile (int fd);
 
