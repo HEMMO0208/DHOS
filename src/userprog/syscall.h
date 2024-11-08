@@ -8,47 +8,47 @@ void syscall_init (void);
 
 struct lock file_sys_lock;
 
-static struct file_elem *
+struct file_elem *
 getFile (int fd);
 
-static void
-userprog_halt ();
+void
+sys_halt ();
 
-static void
-userprog_exit (int status);
+void
+sys_exit (int status);
 
-static tid_t
-userprog_exec (const char *cmd_line);
+tid_t
+sys_exec (const char *cmd_line);
 
-static int
-userprog_wait (tid_t tid);
+int
+sys_wait (tid_t tid);
 
-static bool
-userprog_create (const char *file, unsigned initial_size);
+bool
+sys_create (const char *file, unsigned initial_size);
 
-static bool
-userprog_remove (const char *file);
+bool
+sys_remove (const char *file);
 
-static int
-userprog_open (const char *file);
+int
+sys_open (const char *file);
 
-static int
-userprog_filesize (int fd);
+int
+sys_filesize (int fd);
 
-static int
-userprog_read (int fd, void *buffer, unsigned size);
+int
+sys_read (int fd, void *buffer, unsigned size);
 
-static int
-userprog_write (int fd, const void *buffer, unsigned size);
+int
+sys_write (int fd, const void *buffer, unsigned size);
 
-static void
-userprog_seek (int fd, unsigned position);
+void
+sys_seek (int fd, unsigned position);
 
-static unsigned
-userprog_tell (int fd);
+unsigned
+sys_tell (int fd);
 
-static void
-userprog_close (int fd);
+void
+sys_close (int fd);
 
 
 #endif /* userprog/syscall.h */

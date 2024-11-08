@@ -1,7 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
-#include "syscall.h"
 #include "threads/vaddr.h"
 #include "threads/thread.h"
 #include "threads/interrupt.h"
@@ -41,7 +40,7 @@ is_memory_valid(void* addr) {
 bool
 exit_if_not_valid(void* addr) {
   if (!is_user_vaddr(addr))
-    userprog_exit(-1);
+    sys_exit(-1);
 }
 
 void 
@@ -95,14 +94,14 @@ syscall_handler (struct intr_frame *f)
 
   switch (syscall_num) {
   	case 0:
-  	  userprog_halt ();
+  	  sys_halt ();
   	  break;
   	case 1:
   	{
   	  int status;
       parse(rsp, status);
 
-  	  userprog_exit (status);
+  	  sys_exit (status);
   	  break;
   	}
   	case 2:
@@ -110,7 +109,7 @@ syscall_handler (struct intr_frame *f)
   	  const char *cmd_line;
       parse(rsp, cmd_line);
 
-  	  *ret = userprog_exec(cmd_line);
+  	  *ret = sys_exec(cmd_line);
   	  break;
   	}
   	case 3:
@@ -118,7 +117,7 @@ syscall_handler (struct intr_frame *f)
   	  tid_t tid;
       parse(rsp, tid);
 
-  	  *ret = userprog_wait (tid);
+  	  *ret = sys_wait(tid);
   	  break;
   	}
   	case 4:
@@ -128,7 +127,7 @@ syscall_handler (struct intr_frame *f)
       parse(rsp, file);
       parse(rsp, initial_size);
 
-  	  *ret = userprog_create (file, initial_size);
+  	  *ret = sys_create(file, initial_size);
   	  break;
   	}
   	case 5:
@@ -136,7 +135,7 @@ syscall_handler (struct intr_frame *f)
   	  const char *file;
       parse(rsp, file);
 
-  	  *ret = userprog_remove (file);
+  	  *ret = sys_remove(file);
   	  break;
   	}
   	case 6:
@@ -144,7 +143,7 @@ syscall_handler (struct intr_frame *f)
   	  const char *file;
       parse(rsp, file);
 
-  	  *ret = userprog_open (file);
+  	  *ret = sys_open(file);
   	  break;
   	}
   	case 7:
@@ -152,7 +151,7 @@ syscall_handler (struct intr_frame *f)
   	  int fd;
       parse(rsp, fd);
 
-  	  *ret = userprog_filesize (fd);
+  	  *ret = sys_filesize(fd);
   	  break;
   	}
   	case 8:
@@ -164,7 +163,7 @@ syscall_handler (struct intr_frame *f)
       parse(rsp, buffer);
       parse(rsp, size);
 
-  	  *ret = userprog_read (fd, buffer, size);
+  	  *ret = sys_read(fd, buffer, size);
   	  break;
   	}
   	case 9:
@@ -176,7 +175,7 @@ syscall_handler (struct intr_frame *f)
       parse(rsp, buffer);
       parse(rsp, size);
 
-  	  *ret = userprog_write (fd, buffer, size);
+  	  *ret = sys_write(fd, buffer, size);
 
   	  break;
   	}
@@ -187,7 +186,7 @@ syscall_handler (struct intr_frame *f)
       parse(rsp, fd);
       parse(rsp, position);
 
-      userprog_seek(fd, position);
+      sys_seek(fd, position);
   	  break;
   	}
   	case 11:
@@ -195,7 +194,7 @@ syscall_handler (struct intr_frame *f)
   	  int fd;
       parse(rsp, fd);
 
-  	  *ret = (uint32_t) userprog_tell (fd);
+  	  *ret = (uint32_t) sys_tell(fd);
   	  break;
   	}
   	case 12:
@@ -203,13 +202,13 @@ syscall_handler (struct intr_frame *f)
   	  int fd;
       parse(rsp, fd);
 
-  	  userprog_close (fd);
+  	  sys_close(fd);
   	  break;
   	}
   }
 }
 
-static struct file_elem *
+ struct file_elem *
 getFile (int fd)
 {
   struct thread *t = thread_current ();
@@ -227,41 +226,41 @@ getFile (int fd)
 }
 
 
-static void
-userprog_halt ()
+ void
+sys_halt ()
 {
 	shutdown_power_off ();
 }
 
-static void
-userprog_exit (int status)
+ void
+sys_exit (int status)
 {
   struct thread *cur = thread_current ();
   cur->exit_status = status;
 	thread_exit ();
 }
 
-static tid_t
-userprog_exec (const char *cmd_line)
+ tid_t
+sys_exec (const char *cmd_line)
 {
   tid_t child_tid = TID_ERROR;
 
   if(!is_memory_valid(cmd_line))
-    userprog_exit (-1);
+    sys_exit (-1);
 
   child_tid = process_execute (cmd_line);
 
 	return child_tid;
 }
 
-static int
-userprog_wait (tid_t tid)
+ int
+sys_wait (tid_t tid)
 {
   return process_wait (tid);
 }
 
-static bool
-userprog_create (const char *file, unsigned initial_size)
+ bool
+sys_create (const char *file, unsigned initial_size)
 {
   bool retval;
   if(is_memory_valid(file)) {
@@ -271,18 +270,18 @@ userprog_create (const char *file, unsigned initial_size)
     return retval;
   }
 	else
-    userprog_exit (-1);
+    sys_exit (-1);
 
   return false;
 }
 
-static bool
-userprog_remove (const char *file)
+ bool
+sys_remove (const char *file)
 {
   bool ret;
   
 	if(!is_memory_valid(file))
-    userprog_exit (-1);
+    sys_exit (-1);
 
   lock_acquire (&file_sys_lock);
   ret = filesys_remove (file);
@@ -297,11 +296,11 @@ struct file
     bool deny_write;            /* Has file_deny_write() been called? */
   };
 
-static int
-userprog_open (const char *file)
+ int
+sys_open (const char *file)
 {
 	if (!is_memory_valid(file))
-    userprog_exit(-1);
+    sys_exit(-1);
   
   struct thread *cur = thread_current();
   struct file_elem *new = palloc_get_page (0);
@@ -326,8 +325,8 @@ userprog_open (const char *file)
   return new->fd;
 }
 
-static int
-userprog_filesize (int fd)
+ int
+sys_filesize (int fd)
 {
   int ret;
   struct file_elem *f_elem = NULL;
@@ -344,15 +343,15 @@ userprog_filesize (int fd)
   return ret;
 }
 
-static int
-userprog_read (int fd, void *buffer, unsigned size)
+ int
+sys_read (int fd, void *buffer, unsigned size)
 {
   int bytes_read = 0;
   char *bufChar = NULL;
   struct file_elem *f_elem = NULL;
 
 	if (!is_memory_valid(buffer))
-    userprog_exit (-1);
+    sys_exit (-1);
 
   bufChar = (char *)buffer;
 	if(fd == 0) {
@@ -377,14 +376,14 @@ userprog_read (int fd, void *buffer, unsigned size)
   }
 }
 
-static int
-userprog_write (int fd, const void *buffer, unsigned size)
+ int
+sys_write (int fd, const void *buffer, unsigned size)
 {
   int bytes_written = 0;
   struct file_elem *f_elem = NULL;
 
 	if (!is_memory_valid(buffer))
-		userprog_exit (-1);
+		sys_exit (-1);
 
   if(fd == 1) {
     putbuf(buffer, size);
@@ -404,8 +403,8 @@ userprog_write (int fd, const void *buffer, unsigned size)
   }
 }
 
-static void
-userprog_seek (int fd, unsigned position)
+ void
+sys_seek (int fd, unsigned position)
 {
 	struct file_elem *f_elem = getFile (fd);
   if (f_elem == NULL)
@@ -416,8 +415,8 @@ userprog_seek (int fd, unsigned position)
   lock_release (&file_sys_lock);
 }
 
-static unsigned
-userprog_tell (int fd)
+ unsigned
+sys_tell (int fd)
 {
   unsigned ret;
 
@@ -432,8 +431,8 @@ userprog_tell (int fd)
   return ret;
 }
 
-static void
-userprog_close (int fd)
+ void
+sys_close (int fd)
 {
 	struct thread *cur = thread_current();
   struct file_elem *f_elem = NULL;
