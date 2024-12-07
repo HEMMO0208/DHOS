@@ -1,10 +1,13 @@
+#ifndef PAGE_H
+#define PAGE_H
+
 #include <hash.h>
 #include <userprog/syscall.h>
 
 typedef int mapid_t;
 
 enum page_type{
-    PAGE_CODE, PAGE_SWAP, PAGE_MMAP, PAGE_STACK, PAGE_FILE
+    VM_FILE, VM_ANON, VM_BIN
 };
 
 struct vm_entry
@@ -22,6 +25,7 @@ struct vm_entry
 
     size_t offset;
     size_t size;
+    size_t swap_slot;
 };
 
 struct map_entry
@@ -57,3 +61,5 @@ void vm_insert (struct vm_entry *vme);
 void vm_delete (struct vm_entry *vme);
 
 bool load_file (void* addr, struct vm_entry *vme);
+
+#endif

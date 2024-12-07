@@ -3,7 +3,7 @@
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
 #include "userprog/syscall.h"
-#include <malloc.h>
+#include "threads/malloc.h"
 
 static struct list frame_table;
 static struct lock frame_lock;
@@ -16,7 +16,8 @@ void lock_frame()
 
 void release_frame()
 {
-    lock_release(&frame_lock);
+    if (lock_held_by_current_thread(&frame_lock))
+        lock_release(&frame_lock);
 }
 
 void init_frame_table () 

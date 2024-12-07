@@ -594,7 +594,7 @@ setup_stack (void **esp)
       return false;
     }
 
-    init_vme(vme, 0, upage, true, true, NULL, 0, 0);
+    init_vme(vme, VM_ANON, upage, true, true, NULL, 0, 0);
     vm_insert(vme);
 
     f->vme = vme;

@@ -1,6 +1,4 @@
 #include "userprog/syscall.h"
-#include <stdio.h>
-#include <syscall-nr.h>
 #include "threads/vaddr.h"
 #include "threads/thread.h"
 #include "threads/interrupt.h"
@@ -10,8 +8,11 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "vm/page.h"
-#include "frame.h"
-#include <malloc.h>
+#include "vm/frame.h"
+#include "threads/malloc.h"
+
+#include <stdio.h>
+#include <syscall-nr.h>
 #include <string.h>
 
 #define BUF_MAX 200
