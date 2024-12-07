@@ -661,6 +661,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exec_file = NULL;
 
   init_bit_vector(&t->fd_map);
+  init_bit_vector(&t->mmap_map);
 
   sema_init(&t->wait_sema, 0);
   sema_init(&t->exit_sema, 0);
@@ -669,6 +670,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->list_children);
   list_init(&t->list_file);
   list_init(&t->donator);
+  list_init(&t->list_mmap);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

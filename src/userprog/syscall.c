@@ -9,6 +9,7 @@
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "vm/page.h"
 #include <string.h>
 
 #define BUF_MAX 200
@@ -244,6 +245,23 @@ getFile (int fd)
   return NULL;
 }
 
+struct map_entry *
+getMap (int mid)
+{
+  struct thread *t = thread_current ();
+
+  struct list_elem *it = list_begin(&t->list_mmap);
+  struct list_elem *end = list_end(&t->list_mmap);
+
+  for (; it != end; it = list_next(it))
+    {
+      struct map_entry *map = list_entry (it, struct map_entry, elem);
+      if(map->mid == mid)
+        return map;
+    }
+  return NULL;
+}
+
 
 void
 sys_halt ()
@@ -462,19 +480,33 @@ sys_close (int fd)
   palloc_free_page (f_elem);
 }
 
+int
+min(x, y)
+{
+  return x < y ? x : y;
+}
+
 mapid_t 
 mmap(int fd, void *addr)
 {
+  mapid_t mid;
   struct file *f;
   struct map_entry *me;
   struct vm_entry *vme;
-  int bytes_read = 0, length_file; 
+  struct thread *cur = thread_current();
+  int bytes_read = 0, length_file, size; 
   
   me = (struct map_entry*)malloc(sizeof(struct map_entry));
   if (me == NULL)
     return -1;
 
-  f = file_open(file_get_inode());
+  lock_acquire(&file_sys_lock);
+  f = file_open(getFile(fd));
+  length_file = file_length(f);
+  lock_release(&file_sys_lock);
+
+  if (length_file == 0)
+    return -1;
 
   while(bytes_read < length_file)
   {
@@ -482,19 +514,57 @@ mmap(int fd, void *addr)
     if (vme == NULL)
       return -1;
 
-    init_vme();
+    size = min(length_file - bytes_read, PGSIZE);
 
-    list_push_back(&me->vmes, &vme->elem);
-    
+    init_vme(vme, 0, addr, true, false, f, bytes_read, size);
+
+    list_push_back(&cur->vm, &vme->elem);
+    list_push_back(&me->vmes, &vme->mmap_elem);
+
+    bytes_read += PGSIZE;
   }
 
-
+  mid = find_min(&cur->mmap_map);
+  set_vector(&cur->mmap_map, mid);
   init_map_e(me, mid, f);
 
+  return mid;
 }
 
 void 
-munmap(mapid_t mapping)
+munmap(mapid_t mid)
 {
+	struct map_entry *me = getMap(mid);
+  if(me == NULL)
+    return;
 
+  struct thread *cur = thread_current();
+  struct list_elem *it = list_begin(&me->vmes);
+  struct list_elem *end = list_end(&me->vmes);
+
+	for (it; it != end;)
+  {
+    struct vm_entry *vme = list_entry(it, struct vm_entry, mmap_elem);
+    bool is_dirty = pagedir_is_dirty(cur->pagedir, vme->vaddr);
+
+    if(vme->is_on_memory && is_dirty)
+    {
+      lock_acquire(&file_sys_lock);
+      file_write_at(vme->f, vme->vaddr, vme->size, vme->offset);
+      lock_release(&file_sys_lock);
+
+      lock_acquire(&frame_lock);
+      free_frame(pagedir_get_page(cur->pagedir, vme->vaddr));
+      lock_release(&frame_lock);
+    }
+
+    vme->is_on_memory = false;
+    it = list_remove(it);
+    vme_delete(&cur->vm, vme);
+  }
+
+	// 4. mfe를 mmap_list에서 제거
+  list_remove(&mfe->elem);
+  // 5. mfe 구조체 자체를 free
+  free(mfe); 
 }

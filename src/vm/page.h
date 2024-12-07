@@ -16,12 +16,12 @@ struct vm_entry
     bool is_on_memory;
 
     struct hash_elem elem;
+    struct list_elem mmap_elem;
 
-    struct file *file;
+    struct file *f;
 
     size_t offset;
-    size_t read_bytes;
-    size_t zero_bytes;
+    size_t size;
 };
 
 struct map_entry
@@ -37,7 +37,8 @@ void init_vm (struct hash *vm);
 
 struct vm_entry *find_vm(void *vaddr);
 
-void init_vme (struct vm_entry *vme, 
+void init_vme (struct vm_entry *vme,
+               enum page_type type,
                void *vaddr, 
                bool is_writable, 
                bool is_on_memory, 

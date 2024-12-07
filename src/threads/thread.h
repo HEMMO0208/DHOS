@@ -112,12 +112,14 @@ struct thread
     struct list donator;
     struct list list_file;
     struct list list_children;
+    struct list list_mmap;
 
     struct semaphore load_sema;
 	 struct semaphore wait_sema;
 	 struct semaphore exit_sema;
    
     struct file *exec_file;
+    struct bit_vector mmap_map;
     struct bit_vector fd_map;
     int exit_status;
 

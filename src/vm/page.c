@@ -47,19 +47,24 @@ struct vm_entry *find_vm(void *vaddr)
     return hash_entry(e, struct vm_entry, elem);    
 }
 
-void init_vme (struct vm_entry *vme, 
+void init_vme (struct vm_entry *vme,
+               enum page_type type,
                void *vaddr, 
                bool is_writable, 
                bool is_loaded, 
                struct file *f, 
                size_t offset, 
-               size_t zero_bytes)
+               size_t size)
 {
     ASSERT(vme != NULL);
 
+    vme->type = type;
     vme->vaddr = vaddr;
     vme->is_writable = is_writable;
     vme->is_on_memory = is_loaded;
+    vme->f = f;
+    vme->offset = offset;
+    vme->size = size;
 }
 
 void destory_vm (struct hash *vm)
@@ -73,7 +78,11 @@ void init_map_e (
     struct file *f
 )
 {
+    struct thread *cur = thread_current();
+    
     map->mid = mid;
     map->f = f;
     list_init(&map->vmes);
+
+    list_push_back(&cur->list_mmap, &map->elem);
 }

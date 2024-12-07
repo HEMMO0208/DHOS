@@ -10,6 +10,9 @@ void syscall_init (void);
 struct file_elem *
 getFile (int fd);
 
+struct map_entry *
+getMap (int mid);
+
 void
 sys_halt ();
 
@@ -48,6 +51,9 @@ sys_tell (int fd);
 
 void
 sys_close (int fd);
+
+int
+min(x, y);
 
 mapid_t 
 mmap(int fd, void *addr);
