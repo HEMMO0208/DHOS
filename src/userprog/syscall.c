@@ -574,7 +574,7 @@ munmap(mapid_t mid)
 
     vme->is_on_memory = false;
     it = list_remove(it);
-    vm_delete(vme);
+    vm_delete(cur, vme);
   }
 
   list_remove(&me->elem);

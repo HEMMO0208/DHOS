@@ -44,6 +44,8 @@ process_execute (const char *command)
   struct parse_result* result = parse_command(fn_copy);
   result->parent = cur;
 
+  printf("\ndebug2\n");
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (result->argv[0], PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
@@ -60,6 +62,7 @@ process_execute (const char *command)
     tid = TID_ERROR;
   }
   
+  printf("\ndebug3\n");
   return tid;
 }
 
@@ -398,6 +401,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
+  printf("\nok so far\n");
+
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -456,6 +461,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
+
+    printf("\nok so far2\n");
 
   /* Set up stack. */
   if (!setup_stack (esp))
@@ -540,6 +547,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
+  struct thread *cur = thread_current();
+
+  printf("\n\n maybe \n\n");
 
   struct vm_entry *vme;
 
@@ -556,14 +566,17 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (vme == NULL)
         return false;
 
-      init_vme(vme, 0, upage, writable, false, file, ofs, read_bytes);
-      vm_insert(vme);
+      init_vme(vme, VM_FILE, upage, writable, false, file, ofs, page_read_bytes);
+      vm_insert(cur, vme);
+            printf("\nk\n");
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
     }
+
+  printf("\n\n load end \n\n");
   return true;
 }
 
@@ -574,6 +587,7 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  struct thrad *cur = thread_current();
   struct frame *f;
 
   bool success = false;
@@ -595,7 +609,7 @@ setup_stack (void **esp)
     }
 
     init_vme(vme, VM_ANON, upage, true, true, NULL, 0, 0);
-    vm_insert(vme);
+    vm_insert(cur, vme);
 
     f->vme = vme;
     *esp = PHYS_BASE;
@@ -681,6 +695,7 @@ bool expand_stack(void *addr)
 {
   struct frame *f;
   struct vm_entry *vme;
+  struct thread *cur = thread_current();
 	void *upage = pg_round_down(addr);
   bool success;
 	
@@ -708,7 +723,7 @@ bool expand_stack(void *addr)
   }
 
   init_vme(vme, 0, upage, true, true, NULL, 0, 0);
-  vm_insert(vme);
+  vm_insert(cur, vme);
   f->vme = vme;
 
   release_frame();

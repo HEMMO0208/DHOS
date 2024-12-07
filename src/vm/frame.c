@@ -102,6 +102,50 @@ void free_frame(void *addr)
     free(f);
 }
 
+struct frame* find_victim()
+{
+	struct list_elem *e;
+	struct frame *frame;
+	
+	while (true)
+	{
+		if (!clock || (clock == list_end(&frame_table)))
+		{
+			if (!list_empty(&frame_table))
+			{
+				clock = list_begin(&frame_table);
+				e = list_begin(&frame_table);
+			}
+			else // frame table이 비어있는 경우
+				return NULL;
+		}
+		else // next로 이동
+		{
+			clock = list_next(clock);
+			if (clock == list_end(&frame_table))
+				continue;
+			e = clock;
+		}
+		
+		frame = list_entry(e, struct frame, elem);
+		// access bit 확인 -> 0이면 바로 Return
+		if(!frame->pinned)
+		{
+			if (!pagedir_is_accessed(frame->t->pagedir, frame->vme->vaddr))
+			{
+				return frame;
+			}
+			else
+			{
+				// access bit 1이면 0으로 바꾸고 그 다음으로 clock이동
+				pagedir_set_accessed(frame->t->pagedir, frame->vme->vaddr, false);
+			}
+		}
+		
+	}
+}
+
+
 void evict_frame()
 {
   	struct frame *f = find_victim();
@@ -132,7 +176,7 @@ void evict_frame()
 	
 	pagedir_clear_page(f->t->pagedir, f->vme->vaddr);
 	palloc_free_page(f->page_addr);
-	frame_delete(f);
+	delete_frame(f);
 
 	f->vme->is_on_memory = false;
 	free(f);

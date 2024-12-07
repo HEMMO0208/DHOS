@@ -32,7 +32,7 @@ static void vm_destroy_fn(struct hash_elem *e, void *aux)
         free(vme);
     }
 
-    unlock_frame();
+    release_frame();
 }
 
 void init_vm (struct hash *vm)
@@ -95,21 +95,17 @@ void init_me (
     list_push_back(&cur->list_mmap, &map->elem);
 }
 
-void vm_insert (struct vm_entry *vme)
+void vm_insert (struct thread *t, struct vm_entry *vme)
 {	
-    struct thread *cur = thread_current();
-
-    hash_insert(&cur->vm, &vme->elem);
+    hash_insert(&t->vm, &vme->elem);
 }
 
-void vm_delete (struct vm_entry *vme)
+void vm_delete (struct thread *t, struct vm_entry *vme)
 {
-    struct thread *cur = thread_current();
-    
     lock_frame();
     
-    hash_delete(&cur->vm, &vme->elem);
-    free_frame(pagedir_get_page(cur->pagedir, vme->vaddr));
+    hash_delete(&t->vm, &vme->elem);
+    free_frame(pagedir_get_page(t->pagedir, vme->vaddr));
     free(vme);
 
     release_frame();

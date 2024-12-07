@@ -57,8 +57,8 @@ void init_me (
     struct file *f
 );
 
-void vm_insert (struct vm_entry *vme);
-void vm_delete (struct vm_entry *vme);
+void vm_insert (struct thread *t, struct vm_entry *vme);
+void vm_delete (struct thread *t, struct vm_entry *vme);
 
 bool load_file (void* addr, struct vm_entry *vme);
 
