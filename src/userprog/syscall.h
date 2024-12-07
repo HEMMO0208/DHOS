@@ -3,6 +3,7 @@
 
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "vm/page.h"
 
 void syscall_init (void);
 
@@ -48,5 +49,10 @@ sys_tell (int fd);
 void
 sys_close (int fd);
 
+mapid_t 
+mmap(int fd, void *addr);
+
+void 
+munmap(mapid_t mapping);
 
 #endif /* userprog/syscall.h */

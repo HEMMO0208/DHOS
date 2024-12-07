@@ -96,6 +96,8 @@ struct thread
     int priority;                       /* Priority. */
     int init_priority;
 
+    struct vm_entry *vm;
+
     int is_loaded;
     int nice;
     fixed recent_cpu;

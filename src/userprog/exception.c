@@ -6,6 +6,7 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include <vm/page.h>
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -143,6 +144,7 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
+  struct vm_entry *vme;
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -157,10 +159,6 @@ page_fault (struct intr_frame *f)
     thread_current()->exit_status = -1;
     thread_exit();
   }
-//   /* If the faulting adress is simply an invalid memory access,
-//      just terminate the thread attempting the access */
-//   if(!valid_mem_access(fault_addr))
-//     thread_exit();
 
   /* Turn interrupts back on (they were only off so that we could
      be assured of reading CR2 before it changed). */

@@ -17,6 +17,8 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -144,6 +146,7 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+  init_vm(&cur->vm);
 
   success = load (result->argv[0], &if_.eip, &if_.esp);
 
@@ -581,10 +584,22 @@ static bool
 setup_stack (void **esp) 
 {
   uint8_t *kpage;
+  struct frame *f;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
+  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  f = alloc_frame(PAL_USER | PAL_ZERO);
+
+  // if (kpage != NULL) 
+  //   {
+  //     success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+  //     if (success)
+  //       *esp = PHYS_BASE;
+  //     else
+  //       palloc_free_page (kpage);
+  //   }
+
+  if (f != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
@@ -592,6 +607,7 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+  
   return success;
 }
 

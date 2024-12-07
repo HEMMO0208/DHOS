@@ -1,4 +1,5 @@
-#include <frame.h>
+#include "vm/frame.h"
+#include "threads/palloc.h"
 
 static struct list frame_table;
 static struct lock frame_lock;
@@ -9,6 +10,14 @@ void init_frame_table ()
     list_init(&frame_table);
     lock_init(&frame_lock);
     clock = NULL;
+}
+
+void init_frame (struct frame *f, void *paddr)
+{
+    f->t = thread_current();
+    f->page_addr = paddr;
+    f->vme = NULL;
+    f->pinned = false;
 }
 
 void insert_frame (struct frame* f)
@@ -36,6 +45,45 @@ struct frame *find_frame (void *addr)
     }
 
     return NULL;
+}
+
+struct frame *alloc_frame(enum palloc_flags flags)
+{
+    struct frame *f;
+    void *paddr;
+
+    f = (struct frame*)malloc(sizeof(struct frame));
+    if (f == NULL)
+        return NULL;
+
+    while(true) {
+        paddr = palloc_get_page(flags);
+        if (paddr != NULL)
+            break;
+
+        evict_frame();
+    }
+
+    init_frame(f, paddr);
+    insert_frame(f);
+
+    return f;
+}
+
+void free_frame(void *addr)
+{
+    struct frame *f;
+
+    f = find_frame(addr);
+    if (f == NULL)
+        return;
+
+    f->vme->is_on_memory = false;
+    pagedir_clear_page(f->t->pagedir, f->vme->vaddr);
+    palloc_free_page(f->page_addr);
+    delete_frame(f);
+    
+    free(f);
 }
 
 

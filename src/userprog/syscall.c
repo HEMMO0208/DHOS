@@ -206,6 +206,24 @@ syscall_handler (struct intr_frame *f)
   	  sys_close(fd);
   	  break;
   	}
+    case 13:
+    {
+      int fd;
+      void *addr;
+      parse(rsp, fd);
+      parse(rsp, addr);
+
+      *ret = mmap(fd, addr);
+      break;
+    }
+    case 14:
+    {
+      mapid_t mapping;
+      parse(rsp, mapping);
+
+      *ret = munmap(mapping);
+      break;
+    }
   }
 }
 
@@ -313,7 +331,6 @@ sys_open (const char *file)
     file_deny_write(new->file);
   }
     
-
   set_vector(&cur->fd_map, fd);
   list_push_back(&cur->list_file, &new->elem);
   return new->fd;
@@ -445,3 +462,39 @@ sys_close (int fd)
   palloc_free_page (f_elem);
 }
 
+mapid_t 
+mmap(int fd, void *addr)
+{
+  struct file *f;
+  struct map_entry *me;
+  struct vm_entry *vme;
+  int bytes_read = 0, length_file; 
+  
+  me = (struct map_entry*)malloc(sizeof(struct map_entry));
+  if (me == NULL)
+    return -1;
+
+  f = file_open(file_get_inode());
+
+  while(bytes_read < length_file)
+  {
+    vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
+    if (vme == NULL)
+      return -1;
+
+    init_vme();
+
+    list_push_back(&me->vmes, &vme->elem);
+    
+  }
+
+
+  init_map_e(me, mid, f);
+
+}
+
+void 
+munmap(mapid_t mapping)
+{
+
+}
