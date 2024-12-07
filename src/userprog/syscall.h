@@ -7,6 +7,12 @@
 
 void syscall_init (void);
 
+void
+lock_file_sys();
+
+void
+release_file_sys();
+
 struct file_elem *
 getFile (int fd);
 

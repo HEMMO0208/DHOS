@@ -541,6 +541,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  struct vm_entry *vme;
+
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -550,25 +552,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
+      vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
+      if (vme == NULL)
         return false;
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
+      init_vme(vme, 0, upage, writable, false, file, ofs, read_bytes);
+      vm_insert(vme);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -584,30 +573,38 @@ static bool
 setup_stack (void **esp) 
 {
   uint8_t *kpage;
+  uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   struct frame *f;
+
   bool success = false;
 
-  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  lock_frame();
+
   f = alloc_frame(PAL_USER | PAL_ZERO);
-
-  // if (kpage != NULL) 
-  //   {
-  //     success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-  //     if (success)
-  //       *esp = PHYS_BASE;
-  //     else
-  //       palloc_free_page (kpage);
-  //   }
-
-  if (f != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
+  if (f == NULL){
+    release_frame();
+    return false;
+  }
+    
+  success = install_page (upage, kpage, true);
+  if (success){
+    struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
+    if (vme == NULL){
+      release_frame();
+      return false;
     }
-  
+
+    init_vme(vme, 0, upage, true, true, NULL, 0, 0);
+    vm_insert(vme);
+
+    f->vme = vme;
+    *esp = PHYS_BASE;
+  }
+
+  else
+    free_frame(f->page_addr);
+    
+  release_frame();
   return success;
 }
 
@@ -629,4 +626,91 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+bool handle_fault(struct vm_entry *vme)
+{
+  bool success = false;
+  lock_frame();
+
+  struct frame* f = alloc_frame(PAL_USER);
+  f->vme = vme;
+
+  switch(vme->type)
+  {
+    case VM_BIN:
+      success = load_file(f->page_addr, vme);
+      break;
+
+    case VM_FILE:
+      success = load_file(f->page_addr, vme);
+      break;
+
+    case VM_ANON:
+      success = swap_in(vme->swap_slot, f->page_addr);
+      break;
+
+    default:
+      release_frame();
+      return false;
+  }
+
+  if (!success)
+  {
+    free_frame(f->page_addr);
+    release_frame();
+    return false;
+  }
+
+  success = install_page(vme->vaddr, f->page_addr, vme->is_writable);
+
+  if (!success)
+  {
+    free_frame(f->page_addr);
+    release_frame();
+    return false;
+  }
+
+  vme->is_on_memory = true;
+  release_frame;
+  return true;
+}
+
+
+bool expand_stack(void *addr)
+{
+  struct frame *f;
+  struct vm_entry *vme;
+	void *upage = pg_round_down(addr);
+  bool success;
+	
+  lock_frame();
+
+	f = alloc_frame(PAL_USER | PAL_ZERO);
+  if (f == NULL){
+    release_frame();
+    return false;
+  }
+
+  success = install_page(upage, f->page_addr, true);
+  if (!success)
+  {
+    free_frame(f->page_addr);
+    release_frame();
+    return false;
+  }
+  
+  vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
+  if (vme == NULL)
+  {
+    release_frame();
+    return false;
+  }
+
+  init_vme(vme, 0, upage, true, true, NULL, 0, 0);
+  vm_insert(vme);
+  f->vme = vme;
+
+  release_frame();
+  return true;
 }

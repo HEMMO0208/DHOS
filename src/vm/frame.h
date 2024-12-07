@@ -13,6 +13,9 @@ struct frame{
     bool pinned;
 };
 
+void lock_frame();
+void release_frame();
+
 void init_frame_table();
 void init_frame(struct frame* f, void *paddr);
 void insert_frame(struct frame* f);

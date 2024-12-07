@@ -41,14 +41,19 @@ void init_vme (struct vm_entry *vme,
                enum page_type type,
                void *vaddr, 
                bool is_writable, 
-               bool is_on_memory, 
+               bool is_loaded, 
                struct file *f, 
                size_t offset, 
-               size_t zero_bytes
+               size_t size
 );
 
-void init_map_e (
+void init_me (
     struct map_entry *map,
     mapid_t mid,
     struct file *f
 );
+
+void vm_insert (struct vm_entry *vme);
+void vm_delete (struct vm_entry *vme);
+
+bool load_file (void* addr, struct vm_entry *vme);

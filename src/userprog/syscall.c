@@ -10,6 +10,8 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "vm/page.h"
+#include "frame.h"
+#include <malloc.h>
 #include <string.h>
 
 #define BUF_MAX 200
@@ -17,6 +19,17 @@
 
 static struct lock file_sys_lock;
 static void syscall_handler (struct intr_frame *);
+
+void
+lock_file_sys()
+{
+  lock_acquire(&file_sys_lock);
+}
+
+void release_file_sys()
+{
+  lock_release(&file_sys_lock);
+}
 
 void
 syscall_init (void) 
@@ -222,7 +235,7 @@ syscall_handler (struct intr_frame *f)
       mapid_t mapping;
       parse(rsp, mapping);
 
-      *ret = munmap(mapping);
+      munmap(mapping);
       break;
     }
   }
@@ -526,7 +539,7 @@ mmap(int fd, void *addr)
 
   mid = find_min(&cur->mmap_map);
   set_vector(&cur->mmap_map, mid);
-  init_map_e(me, mid, f);
+  init_me(me, mid, f);
 
   return mid;
 }
@@ -553,18 +566,16 @@ munmap(mapid_t mid)
       file_write_at(vme->f, vme->vaddr, vme->size, vme->offset);
       lock_release(&file_sys_lock);
 
-      lock_acquire(&frame_lock);
+      lock_frame();
       free_frame(pagedir_get_page(cur->pagedir, vme->vaddr));
-      lock_release(&frame_lock);
+      release_frame();
     }
 
     vme->is_on_memory = false;
     it = list_remove(it);
-    vme_delete(&cur->vm, vme);
+    vm_delete(vme);
   }
 
-	// 4. mfe를 mmap_list에서 제거
-  list_remove(&mfe->elem);
-  // 5. mfe 구조체 자체를 free
-  free(mfe); 
+  list_remove(&me->elem);
+  free(me); 
 }
