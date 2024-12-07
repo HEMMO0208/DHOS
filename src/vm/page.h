@@ -1,10 +1,10 @@
 #ifndef PAGE_H
 #define PAGE_H
 
-#include <hash.h>
-#include <userprog/syscall.h>
-
 typedef int mapid_t;
+
+#include <hash.h>
+#include "userprog/syscall.h"
 
 enum page_type{
     VM_FILE, VM_ANON, VM_BIN

@@ -1,9 +1,10 @@
-#include "vm/frame.h"
 #include "threads/palloc.h"
-#include "userprog/pagedir.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 #include "filesys/file.h"
-#include "userprog/syscall.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
+#include "userprog/pagedir.h"
 
 static struct list frame_table;
 static struct lock frame_lock;
@@ -120,12 +121,12 @@ void evict_frame()
 		case VM_BIN:
 			if(dirty)
 			{	
-				frame->vme->swap_slot = swap_out(frame->page_addr);
-				frame->vme->type = VM_ANON;
+				f->vme->swap_slot = swap_out(f->page_addr);
+				f->vme->type = VM_ANON;
 			}
 			break;
 		case VM_ANON:
-			frame->vme->swap_slot = swap_out(frame->page_addr);
+			f->vme->swap_slot = swap_out(f->page_addr);
 			break;
 	}
 	
