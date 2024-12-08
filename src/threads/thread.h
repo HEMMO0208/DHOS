@@ -93,8 +93,7 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-   struct hash vm;     
-    void* esp;
+   struct hash vm;
     struct list mmap_list;
     int next_mid;
 

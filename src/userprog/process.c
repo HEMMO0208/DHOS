@@ -331,6 +331,12 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  int i;
+  for (i = 0; i < cur->next_mid; ++i){
+    sys_munmap(i);
+  }
+  vm_destroy(&cur->vm);
 }
 
 /* Sets up the CPU for running user code in the current
