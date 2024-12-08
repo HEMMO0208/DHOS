@@ -215,6 +215,11 @@ sys_exit (int status)
     }
   }
 
+  for (i = 0; i < cur->next_mid; ++i){
+    sys_munmap(i);
+  }
+  vm_destroy(&cur->vm);
+
   sema_up (&(cur->process_ptr->exit_code_sema));
   thread_exit ();
   NOT_REACHED ();
