@@ -148,19 +148,19 @@ void evict_frame()
 struct frame* find_victim()
 {
 	struct frame *frame;
+
+	if (list_empty(&frame_table))
+			return NULL;
+		
+	if (frame_clock == NULL)
+		frame_clock = list_begin(&frame_table);
 	
 	while (true)
 	{
-		if (list_empty(&frame_table))
-			return NULL;
-		
-		if (frame_clock == NULL)
-			frame_clock = list_begin(&frame_table);
-
-		else
+		if (frame_clock != list_end(&frame_table))
 			frame_clock = list_next(frame_clock);
 		
-		if (frame_clock == list_end(&frame_table))
+		else
 			frame_clock = list_begin(&frame_table);
 		
 		frame = list_entry(frame_clock, struct frame, ft_elem);
