@@ -217,6 +217,7 @@ sys_exit (int status)
   for (i = 0; i < cur->next_mid; ++i){
     sys_munmap(i);
   }
+  vm_destroy(&cur->vm);
   sema_up (&(cur->process_ptr->exit_code_sema));
   thread_exit ();
   NOT_REACHED ();
@@ -528,8 +529,7 @@ sys_munmap (mapid_t mid)
 
     if(vme->is_on_memory && is_dirty) {
       file_lock_acquire();
-      file_seek(vme->file, vme->offset);
-      file_write(vme->file, vme->vaddr, vme->read_bytes);
+      file_write_at(vme->file, vme->vaddr, vme->read_bytes, vme->offset);
       file_lock_release();
 
       frame_lock_acquire();
