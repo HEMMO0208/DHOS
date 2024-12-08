@@ -5,152 +5,132 @@
 #include "threads/thread.h"
 #include "threads/malloc.h"
 #include "filesys/file.h"
+#include "userprog/process.h"
+#include "vm/frame.h"
 #include "vm/swap.h"
 
-static unsigned vm_hash_fn (const struct hash_elem *e, void *aux);
-static bool vm_compare_fn (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+static unsigned vm_hash (const struct hash_elem *e, void *aux);
+static bool vm_less (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
-extern struct lock file_lock;
-extern struct lock frame_lock;
+extern struct lock filesys_lock;
 
 // vm (hash table) initialization
 void vm_init (struct hash *vm) //
 {
-	hash_init(vm, vm_hash_fn, vm_compare_fn, NULL);
+	hash_init(vm, vm_hash, vm_less, NULL);
 }
 
-static unsigned vm_hash_fn (const struct hash_elem *e, void *aux UNUSED)
+static unsigned vm_hash (const struct hash_elem *e, void *aux UNUSED)
 {
 	struct vm_entry *vme = hash_entry(e, struct vm_entry, elem);
-	int addr = (int)vme->vaddr;
-
-	return hash_int(addr);
+	return hash_int((int)vme->vaddr);
 }
 
-static bool vm_compare_fn (const struct hash_elem *l, const struct hash_elem *r, void *aux UNUSED)
+static bool vm_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
-	struct vm_entry *vl, *vr;
-	
-	vl = hash_entry(l, struct vm_entry, elem)->vaddr;
-	vr = hash_entry(r, struct vm_entry, elem)->vaddr;
-
-	return  vl < vr;
+	return hash_entry(a, struct vm_entry, elem)->vaddr < hash_entry(b, struct vm_entry, elem)->vaddr;
 }	
 
-void vm_destroy_fn(struct hash_elem *e, void *aux UNUSED)
-{
-	struct vm_entry *vme = hash_entry(e, struct vm_entry, elem);
-	frame_lock_acquire();
-
-	if(vme->is_on_memory)
-		free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
-
-	free(vme);
-
-	frame_lock_release();
-}
-
+// vm entry
 bool vme_insert (struct hash *vm, struct vm_entry *vme)
 {	
-	struct hash_elem *ret = hash_insert(vm, &vme->elem);
-
-	return ret != NULL;
+	// 인자로 넘겨 받은 vme를 vm entry에 insert
+	if (hash_insert(vm, &vme->elem)) 
+		return true;
+	else 
+		return false;
+	
 }
 
-bool vme_delete (struct hash *vm, struct vm_entry *vme)
+bool vme_delete (struct hash *vm, struct vm_entry *vme) // syscall munmap에서 호출
 {
 	frame_lock_acquire();
-
-	struct hash_elem *ret = hash_delete(vm, &vme->elem);
-
-	if (ret == NULL){
+	// 인자로 받은 vme를 vm_entry에서 삭제
+	if (hash_delete(vm, &vme->elem))
+	{
+		free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
+		free(vme);
+		frame_lock_release();
+		return true;
+	}
+	else
+	{
 		frame_lock_release();
 		return false;
 	}
-
-	free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
-	free(vme);
-	frame_lock_release();
-
-	return true;
-
 }	
 
 struct vm_entry *vme_find (void *vaddr)
 {
+	// 인자로 받은 vaddr에 해당하는 vm_entry를 찾아서 return
 	struct hash *vm = &thread_current()->vm;
 	struct vm_entry vme;
-	struct hash_elem *it;
+	struct hash_elem *elem;
 
+	// (pg_round_down())을 이용하여 vaddr에 해당하는 page number을 추출
 	vme.vaddr = pg_round_down(vaddr);
-	it = hash_find(vm, &vme.elem);
 	
-	if (it != NULL)
-		return hash_entry(it, struct vm_entry, elem);
+	// hash_find() 함수를 이용하여 vm_entry를 찾기
+	if ((elem = hash_find(vm, &vme.elem)))
+		return hash_entry(elem, struct vm_entry, elem);
+	else 
+		return NULL;
+}
 
-	return NULL;
+void vm_destroy_func(struct hash_elem *e, void *aux UNUSED)
+{
+	struct vm_entry *vme = hash_entry(e, struct vm_entry, elem);
+	frame_lock_acquire();
+	if(vme)
+	{
+		if(vme->is_loaded)
+		{
+			free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
+		}
+		free(vme);
+	}	
+	frame_lock_release();
+	
 }
 
 void vm_destroy (struct hash *vm)
 {
-	hash_destroy(vm, vm_destroy_fn);
+	// hash_destroy() 함수를 사용하여 hash table의 bucket list와 vm_entry들을 삭제하는 함수
+	hash_destroy(vm, vm_destroy_func);
 }
+
 
 bool load_file (void* addr, struct vm_entry *vme)
 {
+	// 1. file_read_at으로 physical page에 read_bytes만큼 read
 	file_lock_acquire();
-
-	file_seek(vme->file, vme->offset);
-	int byte_read = file_read(vme->file, addr, vme->read_bytes);
-
+	int byte_read = file_read_at(vme->file, addr, vme->read_bytes, vme->offset);
 	file_lock_release();
-
-	if (byte_read != vme->read_bytes)
+	if (byte_read != (int)vme->read_bytes)
 		return false;
 
+	// 2. zero_bytes만큼 남는 부분을‘0’으로 채우기
 	memset(addr + vme->read_bytes, 0, vme->zero_bytes);
 	return true;
 
 }
 
-void init_vme(
-	struct vm_entry *vme, 
-	enum page_type type, 
-	void *vaddr, 
-	bool writable, 
-	bool is_loaded, 
-	struct file* file, 
-	size_t offset, 
-	size_t read_bytes, 
-	size_t zero_bytes) 
+
+struct vm_entry *vme_construct ( uint8_t type, void *vaddr, bool writable, bool is_loaded, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes)
 {
+	struct vm_entry* vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
+	if (!vme) 
+		return NULL;
+	memset(vme, 0, sizeof(struct vm_entry));
+	// vm_entry struct의 member variable 설정
 	vme->type = type;
 	vme->vaddr = vaddr;
-	vme->is_writable = writable;
-	vme->is_on_memory = is_loaded;
+	vme->writable = writable;
+	vme->is_loaded = is_loaded;
 	vme->file = file;
 	vme->offset = offset;
 	vme->read_bytes = read_bytes;
 	vme->zero_bytes = zero_bytes;
-}
 
-struct mmap_elem *me_find (mapid_t mid) {
-	struct thread *cur = thread_current();
-  	struct list_elem *it = list_begin(&cur->mmap_list);
-  	struct list_elem *end = list_end(&cur->mmap_list);
-	
-	for (it; it != end; it = list_next(it)) {
-		struct mmap_elem* me = list_entry(it, struct mmap_elem, elem);
-
-		if (me->mid == mid) 
-			return me;
-	}
-
-	return NULL;
-}
-
-void init_me(struct mmap_elem *me, struct file* file, mapid_t mid) {
-	list_init(&me->vmes);
-	me->file = file;
-	me->mid = mid;
+	return vme;
 }

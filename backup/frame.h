@@ -8,7 +8,6 @@
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 
-
 struct frame
 {
 	void *page_addr; 
@@ -21,12 +20,13 @@ struct frame
 void frame_lock_acquire();
 void frame_lock_release();
 
-void frame_table_init(void);
+void frame_table_init();
+void frame_init();
 void frame_insert(struct frame *frame);
 void frame_delete(struct frame *frame);
+
 struct frame* alloc_frame(enum palloc_flags flags);
 struct frame* frame_find(void* addr);
-struct frame* find_frame_for_vaddr(void* vaddr);
 void free_frame(void *addr);
 
 void evict_frame(void);
