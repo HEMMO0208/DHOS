@@ -462,7 +462,7 @@ sys_mmap(int fd, void* addr)
   
   struct mmap_file *mfe;
   struct file *file;
-  struct thread *cur = thrad_current();
+  struct thread *cur = thread_current();
   struct process *p = cur->process_ptr;
 
 	mfe = (struct mmap_file *)malloc(sizeof(struct mmap_file));
@@ -504,7 +504,6 @@ sys_mmap(int fd, void* addr)
   list_push_back(&cur->mmap_list, &mfe->elem);
 	return mfe->mapid;
 }
-
 
 static void 
 sys_munmap (mapid_t mapid)
