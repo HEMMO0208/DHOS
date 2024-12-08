@@ -203,14 +203,19 @@ sys_exit (int status)
   printf ("%s: exit(%d)\n", cur->name, status);
   cur->process_ptr->exit_code = status;
 
+  int i;
+
   file_close (cur->process_ptr->file_exec);
-  for (size_t i = 2; i < OPEN_MAX; i++)
+  for (i = 2; i < OPEN_MAX; i++)
   {
     if(cur->process_ptr->fd_table[i].in_use)
     {
       file_close (cur->process_ptr->fd_table[i].file);
       remove_fd (cur->process_ptr, i);
     }
+  }
+  for (i = 0; i < cur->next_mid; ++i){
+    sys_munmap(i);
   }
   sema_up (&(cur->process_ptr->exit_code_sema));
   thread_exit ();

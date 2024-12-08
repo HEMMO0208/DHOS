@@ -150,7 +150,7 @@ struct frame* find_victim()
 	struct frame *frame;
 
 	if (list_empty(&frame_table))
-			return NULL;
+		return NULL;
 		
 	if (frame_clock == NULL)
 		frame_clock = list_begin(&frame_table);
