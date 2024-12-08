@@ -31,7 +31,7 @@ static void sys_seek (int fd, unsigned position);
 static unsigned sys_tell (int fd);
 static void sys_close (int fd);
 static mapid_t sys_mmap(int fd, void* addr);
-static void sys_munmap (mapid_t mapid);
+static void sys_munmap (mapid_t mid);
 
  	
 /* Reads a byte at user virtual address UADDR.
@@ -460,12 +460,12 @@ sys_mmap(int fd, void* addr)
   int bytes_remain;
   size_t offset = 0;
   
-  struct mmap_file *mfe;
+  struct mmap_elem *mfe;
   struct file *file;
   struct thread *cur = thread_current();
   struct process *p = cur->process_ptr;
 
-	mfe = (struct mmap_file *)malloc(sizeof(struct mmap_file));
+	mfe = (struct mmap_elem *)malloc(sizeof(struct mmap_elem));
   if (!mfe) 
     return -1;
 
@@ -474,10 +474,12 @@ sys_mmap(int fd, void* addr)
   bytes_remain = file_length(file);
   file_lock_release();
 
-  if (bytes_remain == 0) 
+  if (bytes_remain == 0){
+    free(mfe);
     return -1;
+  }
 
-  mid = cur->mmap_next++;
+  mid = cur->next_mid++;
 	init_mfe(mfe, file, mid);
   
 	while(bytes_remain > 0) {
@@ -491,9 +493,9 @@ sys_mmap(int fd, void* addr)
     if (vme == NULL) 
       return false;
 
-    init_vme(vme, VM_FILE, addr, true, false, file, offset, page_read_bytes, page_zero_bytes);
+    init_vme(vme, PAGE_MMAP, addr, true, false, file, offset, page_read_bytes, page_zero_bytes);
 
-    list_push_back(&mfe->vme_list, &vme->mmap_elem);
+    list_push_back(&mfe->vmes, &vme->mmap_elem);
     vme_insert(&cur->vm, vme);
 		
     addr += PGSIZE;
@@ -502,33 +504,37 @@ sys_mmap(int fd, void* addr)
 	}
 
   list_push_back(&cur->mmap_list, &mfe->elem);
-	return mfe->mapid;
+	return mfe->mid;
 }
 
 static void 
-sys_munmap (mapid_t mapid)
+sys_munmap (mapid_t mid)
 {
-	struct mmap_file *mfe = mfe_find(mapid);
+	struct mmap_elem *mfe = mfe_find(mid);
   if(mfe == NULL) return;
 
-  struct list_elem *it = list_begin(&mfe->vme_list);
-  struct list_elem *end = list_end(&mfe->vme_list);
+  struct thread *cur = thread_current();
+  struct list_elem *it = list_begin(&mfe->vmes);
+  struct list_elem *end = list_end(&mfe->vmes);
 
 	for (it; it != end;) {
     struct vm_entry *vme = list_entry(it, struct vm_entry, mmap_elem);
-    if(vme->is_on_memory && (pagedir_is_dirty(thread_current()->pagedir, vme->vaddr)))
-    {
+    bool is_dirty = pagedir_is_dirty(cur->pagedir, vme->vaddr);
+
+    if(vme->is_on_memory && is_dirty) {
       file_lock_acquire();
-      file_write_at(vme->file, vme->vaddr, vme->read_bytes, vme->offset);
+      file_seek(vme->file, vme->offset);
+      file_write(vme->file, vme->vaddr, vme->read_bytes);
       file_lock_release();
 
       frame_lock_acquire();
-      free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
+      free_frame(pagedir_get_page(cur->pagedir, vme->vaddr));
       frame_lock_release();
     }
+
     vme->is_on_memory = false;
+    vme_delete(&cur->vm, vme);
     it = list_remove(it);
-    vme_delete(&thread_current()->vm, vme);
   }
 
   list_remove(&mfe->elem);

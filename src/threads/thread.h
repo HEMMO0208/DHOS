@@ -96,7 +96,7 @@ struct thread
    struct hash vm;     
     void* esp;
     struct list mmap_list;
-    int mmap_next;
+    int next_mid;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

@@ -19,21 +19,18 @@ void swap_init()
 	lock_init(&lock_swap);
 }
 
-bool swap_in(size_t slot_index, void *kaddr)
+void swap_in(size_t slot_index, void *kaddr)
 {
 	int i, start_sector = NUM_SECTORS * slot_index;
 
     lock_acquire(&lock_swap);
 	
 	for (i = 0 ; i < NUM_SECTORS ; ++i)
-	{	
 		block_read(swap_block, start_sector + i, kaddr + i * BLOCK_SECTOR_SIZE);
-	}
 
 	bitmap_set(swap_bitmap, slot_index, false);
 
     lock_release(&lock_swap);
-	return true;
 }
 
 size_t swap_out(void* kaddr)
@@ -51,9 +48,8 @@ size_t swap_out(void* kaddr)
 
 	start_sector = NUM_SECTORS * slot_index;
 	
-	for (i = 0; i < NUM_SECTORS; ++i) {
+	for (i = 0; i < NUM_SECTORS; ++i)
 		block_write(swap_block, start_sector + i, kaddr + i * BLOCK_SECTOR_SIZE);
-	}
 
 	lock_release(&lock_swap);
     return slot_index;

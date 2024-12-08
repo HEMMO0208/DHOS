@@ -7,7 +7,7 @@
 #include "filesys/off_t.h"
 
 enum page_type{
-	VM_BIN, VM_FILE, VM_ANON
+	PAGE_CODE, PAGE_MMAP, PAGE_SWAP
 };
 
 struct vm_entry 
@@ -30,14 +30,13 @@ struct vm_entry
     size_t swap_slot;
 };
 
-struct mmap_file {
-	mapid_t mapid;
+struct mmap_elem {
+	mapid_t mid;
 
 	struct file* file;     
-	struct list vme_list;  
+	struct list vmes;  
 	struct list_elem elem; 
 };
-
 
 void vm_init (struct hash *vm);
 struct vm_entry *vme_find (void *vaddr);
@@ -62,6 +61,6 @@ void init_vme(
 	size_t zero_bytes);
 
 void *mfe_find (mapid_t mid);
-void init_mfe (struct mmap_file *mfe, struct file* file, mapid_t mid);
+void init_mfe (struct mmap_elem *mfe, struct file* file, mapid_t mid);
 
 #endif

@@ -140,17 +140,17 @@ void *mfe_find (mapid_t mid) {
   	struct list_elem *end = list_end(&cur->mmap_list);
 	
 	for (it; it != end; it = list_next(it)) {
-		struct mmap_file* mfe = list_entry(it, struct mmap_file, elem);
+		struct mmap_elem* mfe = list_entry(it, struct mmap_elem, elem);
 
-		if (mfe->mapid == mid) 
+		if (mfe->mid == mid) 
 			break;
 	}
 
 	return NULL;
 }
 
-void init_mfe(struct mmap_file *mfe, struct file* file, mapid_t mid) {
-	list_init(&mfe->vme_list);
+void init_mfe(struct mmap_elem *mfe, struct file* file, mapid_t mid) {
+	list_init(&mfe->vmes);
 	mfe->file = file;
-	mfe->mapid = mid;
+	mfe->mid = mid;
 }

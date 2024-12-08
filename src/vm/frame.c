@@ -74,7 +74,7 @@ struct frame* alloc_frame (enum palloc_flags flags)
 	void *paddr;
 	struct frame *frame;
 
-    frame = (struct frame *)malloc(sizeof(struct frame));
+    frame = (struct frame*)malloc(sizeof(struct frame));
     if (!frame) 
 		return NULL;
 
@@ -86,8 +86,6 @@ struct frame* alloc_frame (enum palloc_flags flags)
 
 		evict_frame();
 	}
-
-	ASSERT(pg_ofs(paddr) == 0);
 
 	frame_init(frame, paddr);
 	frame_insert(frame);		
@@ -115,27 +113,26 @@ void evict_frame()
 
   	bool dirty = pagedir_is_dirty(frame->thread->pagedir, vme->vaddr);
 	 
-	switch(vme->type)
-	{
-		case VM_FILE:
-			if(dirty)
-			{	
+	switch(vme->type) {
+		case PAGE_MMAP:
+			if(dirty) {	
 				file_lock_acquire();
 				file_seek(vme->file, vme->offset);
 				file_write(vme->file, frame->page_addr, vme->read_bytes);
 				file_lock_release();
 			}
+
 			break;
 
-		case VM_BIN:
-			if(dirty)
-			{	
+		case PAGE_CODE:
+			if(dirty) {	
 				vme->swap_slot = swap_out(frame->page_addr);
-				vme->type = VM_ANON;
+				vme->type = PAGE_SWAP;
 			}
+
 			break;
 
-		case VM_ANON:
+		case PAGE_SWAP:
 			vme->swap_slot = swap_out(frame->page_addr);
 			break;
 	}
@@ -148,47 +145,34 @@ void evict_frame()
 	free(frame);
 }
 
-
 struct frame* find_victim()
 {
-	struct list_elem *e;
 	struct frame *frame;
 	
 	while (true)
 	{
-		if (!frame_clock || (frame_clock == list_end(&frame_table)))
-		{
-			if (!list_empty(&frame_table))
-			{
-				frame_clock = list_begin(&frame_table);
-				e = list_begin(&frame_table);
-			}
-			else // frame table이 비어있는 경우
-				return NULL;
-		}
-		else // next로 이동
-		{
+		if (list_empty(&frame_table))
+			return NULL;
+		
+		if (frame_clock == NULL)
+			frame_clock = list_begin(&frame_table);
+
+		else
 			frame_clock = list_next(frame_clock);
-			if (frame_clock == list_end(&frame_table))
-				continue;
-			e = frame_clock;
-		}
 		
-		frame = list_entry(e, struct frame, ft_elem);
-		// access bit 확인 -> 0이면 바로 Return
-		if(!frame->pinned)
-		{
-			if (!pagedir_is_accessed(frame->thread->pagedir, frame->vme->vaddr))
-			{
+		if (frame_clock == list_end(&frame_table))
+			frame_clock = list_begin(&frame_table);
+		
+		frame = list_entry(frame_clock, struct frame, ft_elem);
+		bool is_accessed = pagedir_is_accessed(frame->thread->pagedir, frame->vme->vaddr);
+
+		if(!frame->pinned) {
+			if (!is_accessed)
 				return frame;
-			}
+
 			else
-			{
-				// access bit 1이면 0으로 바꾸고 그 다음으로 clock이동
 				pagedir_set_accessed(frame->thread->pagedir, frame->vme->vaddr, false);
-			}
 		}
-		
 	}
 }
 

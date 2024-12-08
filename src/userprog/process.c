@@ -624,7 +624,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (vme == NULL)
         return false;
 
-      init_vme(vme, VM_BIN, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
+      init_vme(vme, PAGE_CODE, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
 
       vme_insert(&cur->vm, vme);
 
@@ -670,7 +670,7 @@ setup_stack (void **esp)
     return false;
   }
 
-  init_vme(vme, VM_ANON, vaddr, true, true, NULL, 0, 0, 0);
+  init_vme(vme, PAGE_SWAP, vaddr, true, true, NULL, 0, 0, 0);
   frame->vme = vme;
     
   vme_insert(&cur->vm, frame->vme);
@@ -797,16 +797,17 @@ bool handle_fault (struct vm_entry *vme)
 
   frame->vme = vme;
 
-  if (vme->type == VM_ANON)
-    success = swap_in(vme->swap_slot, frame->page_addr);
+  if (vme->type == PAGE_SWAP)
+    swap_in(vme->swap_slot, frame->page_addr);
 
-  else
+  else {
     success = load_file(frame->page_addr, vme);
 
-  if (!success) {
-    free_frame(frame->page_addr);
-    frame_lock_release();
-    return false;
+    if (!success) {
+      free_frame(frame->page_addr);
+      frame_lock_release();
+      return false;
+    }
   }
 
   success = install_page(vme->vaddr, frame->page_addr, vme->is_writable);
@@ -837,20 +838,19 @@ bool expand_stack (void *addr)
   }
 
   success = install_page(upage, frame->page_addr, true);
-  if (!success)
-  {
+  if (!success) {
     free_frame(frame->page_addr);
     frame_lock_release();
     return success;
   }
 
   vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
-  if (vme == NULL){
+  if (vme == NULL) {
     frame_lock_release();
     return false;
   }
 
-  init_vme(vme, VM_ANON, upage, true, true, NULL, 0, 0, 0);
+  init_vme(vme, PAGE_SWAP, upage, true, true, NULL, 0, 0, 0);
   frame->vme = vme;
 
   vme_insert(&thread_current()->vm, frame->vme);
