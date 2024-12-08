@@ -26,25 +26,28 @@ struct vm_entry
 
     struct hash_elem elem;
     struct list_elem mmap_elem;
-	
+
     size_t swap_slot;
 };
 
 struct mmap_file {
-  mapid_t mapid;        
-  struct file* file;     
-  struct list_elem elem; 
-  struct list vme_list;  
+	mapid_t mapid;
+
+	struct file* file;     
+	struct list vme_list;  
+	struct list_elem elem; 
 };
 
-void vm_init (struct hash *vm);
 
+void vm_init (struct hash *vm);
 struct vm_entry *vme_find (void *vaddr);
 
 bool vme_insert (struct hash *vm, struct vm_entry *vme);
 bool vme_delete (struct hash *vm, struct vm_entry *vme);
-void vm_destroy_func(struct hash_elem *e, void *aux);
+
+void vm_destroy_fn(struct hash_elem *e, void *aux);
 void vm_destroy (struct hash *vm);
+
 bool load_file (void* kaddr, struct vm_entry *fte);
 
 void init_vme(
@@ -58,5 +61,7 @@ void init_vme(
 	size_t read_bytes, 
 	size_t zero_bytes);
 
-struct vm_entry *vme_construct ( enum page_type type, void *vaddr, bool writable, bool is_loaded, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes);
+void *mfe_find (mapid_t mid);
+void init_mfe (struct mmap_file *mfe, struct file* file, mapid_t mid);
+
 #endif

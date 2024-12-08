@@ -7,8 +7,8 @@
 #include "filesys/file.h"
 #include "vm/swap.h"
 
-static unsigned vm_hash (const struct hash_elem *e, void *aux);
-static bool vm_less (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+static unsigned vm_hash_fn (const struct hash_elem *e, void *aux);
+static bool vm_compare_fn (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
 extern struct lock file_lock;
 extern struct lock frame_lock;
@@ -16,10 +16,10 @@ extern struct lock frame_lock;
 // vm (hash table) initialization
 void vm_init (struct hash *vm) //
 {
-	hash_init(vm, vm_hash, vm_less, NULL);
+	hash_init(vm, vm_hash_fn, vm_compare_fn, NULL);
 }
 
-static unsigned vm_hash (const struct hash_elem *e, void *aux UNUSED)
+static unsigned vm_hash_fn (const struct hash_elem *e, void *aux UNUSED)
 {
 	struct vm_entry *vme = hash_entry(e, struct vm_entry, elem);
 	int addr = (int)vme->vaddr;
@@ -27,7 +27,7 @@ static unsigned vm_hash (const struct hash_elem *e, void *aux UNUSED)
 	return hash_int(addr);
 }
 
-static bool vm_less (const struct hash_elem *l, const struct hash_elem *r, void *aux UNUSED)
+static bool vm_compare_fn (const struct hash_elem *l, const struct hash_elem *r, void *aux UNUSED)
 {
 	struct vm_entry *vl, *vr;
 	
@@ -37,34 +37,43 @@ static bool vm_less (const struct hash_elem *l, const struct hash_elem *r, void 
 	return  vl < vr;
 }	
 
-// vm entry
-bool vme_insert (struct hash *vm, struct vm_entry *vme)
-{	
-	// 인자로 넘겨 받은 vme를 vm entry에 insert
-	if (hash_insert(vm, &vme->elem)) 
-		return true;
-	else 
-		return false;
-	
+void vm_destroy_fn(struct hash_elem *e, void *aux UNUSED)
+{
+	struct vm_entry *vme = hash_entry(e, struct vm_entry, elem);
+	frame_lock_acquire();
+
+	if(vme->is_on_memory)
+		free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
+
+	free(vme);
+
+	frame_lock_release();
 }
 
-bool vme_delete (struct hash *vm, struct vm_entry *vme) // syscall munmap에서 호출
+bool vme_insert (struct hash *vm, struct vm_entry *vme)
+{	
+	struct hash_elem *ret = hash_insert(vm, &vme->elem);
+
+	return ret != NULL;
+}
+
+bool vme_delete (struct hash *vm, struct vm_entry *vme)
 {
-	lock_acquire(&frame_lock);
+	frame_lock_acquire();
 
-	if (hash_delete(vm, &vme->elem))
-	{
-		free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
-		free(vme);
-		lock_release(&frame_lock);
-		return true;
-	}
+	struct hash_elem *ret = hash_delete(vm, &vme->elem);
 
-	else
-	{
-		lock_release(&frame_lock);
+	if (ret == NULL){
+		frame_lock_release();
 		return false;
 	}
+
+	free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
+	free(vme);
+	frame_lock_release();
+
+	return true;
+
 }	
 
 struct vm_entry *vme_find (void *vaddr)
@@ -82,36 +91,19 @@ struct vm_entry *vme_find (void *vaddr)
 	return NULL;
 }
 
-void vm_destroy_func(struct hash_elem *e, void *aux UNUSED)
-{
-	struct vm_entry *vme = hash_entry(e, struct vm_entry, elem);
-
-	lock_acquire(&frame_lock);
-	if(vme)
-	{
-		if(vme->is_on_memory)
-		{
-			free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
-		}
-		free(vme);
-	}
-
-	lock_release(&frame_lock);
-	
-}
-
 void vm_destroy (struct hash *vm)
 {
-	hash_destroy(vm, vm_destroy_func);
+	hash_destroy(vm, vm_destroy_fn);
 }
-
 
 bool load_file (void* addr, struct vm_entry *vme)
 {
-	lock_acquire(&file_lock);
+	file_lock_acquire();
+
 	file_seek(vme->file, vme->offset);
 	int byte_read = file_read(vme->file, addr, vme->read_bytes);
-	lock_release(&file_lock);
+
+	file_lock_release();
 
 	if (byte_read != vme->read_bytes)
 		return false;
@@ -142,20 +134,23 @@ void init_vme(
 	vme->zero_bytes = zero_bytes;
 }
 
-struct vm_entry *vme_construct (enum page_type type, void *vaddr, bool writable, bool is_loaded, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes)
-{
-	struct vm_entry* vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
-	if (!vme) 
-		return NULL;
-	memset(vme, 0, sizeof(struct vm_entry));
-	vme->type = type;
-	vme->vaddr = vaddr;
-	vme->is_writable = writable;
-	vme->is_on_memory = is_loaded;
-	vme->file = file;
-	vme->offset = offset;
-	vme->read_bytes = read_bytes;
-	vme->zero_bytes = zero_bytes;
+void *mfe_find (mapid_t mid) {
+	struct thread *cur = thread_current();
+  	struct list_elem *it = list_begin(&cur->mmap_list);
+  	struct list_elem *end = list_end(&cur->mmap_list);
+	
+	for (it; it != end; it = list_next(it)) {
+		struct mmap_file* mfe = list_entry(it, struct mmap_file, elem);
 
-	return vme;
+		if (mfe->mapid == mid) 
+			break;
+	}
+
+	return NULL;
+}
+
+void init_mfe(struct mmap_file *mfe, struct file* file, mapid_t mid) {
+	list_init(&mfe->vme_list);
+	mfe->file = file;
+	mfe->mapid = mid;
 }

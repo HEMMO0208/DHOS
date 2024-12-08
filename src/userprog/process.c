@@ -620,7 +620,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      // struct vm_entry *vme = vme_construct(VM_BIN, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
       vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
       if (vme == NULL)
         return false;
@@ -647,32 +646,37 @@ setup_stack (void **esp)
   struct frame* frame;
   bool success = false;
   uint8_t *vaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  struct vm_entry *vme;
+  struct thread *cur = thread_current();
 
-  lock_acquire(&frame_lock);
+  frame_lock_acquire();
   frame = alloc_frame(PAL_USER | PAL_ZERO);
 
   if (frame == NULL || frame->page_addr == NULL){
     free_frame (frame->page_addr);
-    lock_release(&frame_lock);
+    frame_lock_release();
     return false;
   }
   
   success = install_page (vaddr, frame->page_addr, true);
-  if (success)
-    {
-      frame->vme = vme_construct(VM_ANON, vaddr, true, true, NULL, NULL, 0, 0);
-      if (!frame->vme)
-      {
-        lock_release(&frame_lock);
-        return false;
-      }
-        
-      vme_insert(&thread_current()->vm, frame->vme);
-      *esp = PHYS_BASE;
-    } 
+  if (!success) {
+    frame_lock_release();
+    return false;
+  }
 
-  lock_release(&frame_lock);
-  return success;
+  vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
+  if (vme == NULL){
+    frame_lock_release();
+    return false;
+  }
+
+  init_vme(vme, VM_ANON, vaddr, true, true, NULL, 0, 0, 0);
+  frame->vme = vme;
+    
+  vme_insert(&cur->vm, frame->vme);
+  *esp = PHYS_BASE;
+
+  return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
@@ -736,13 +740,15 @@ init_process (struct process *p)
 void
 file_lock_acquire (void)
 {
-  lock_acquire (&file_lock);
+  if (!lock_held_by_current_thread(&file_lock))
+    lock_acquire (&file_lock);
 }
 
 void
 file_lock_release (void)
 {
-  lock_release (&file_lock);
+  if (lock_held_by_current_thread(&file_lock))
+    lock_release (&file_lock);
 }
 
 int
@@ -778,67 +784,55 @@ remove_fd (struct process *p, int fd)
   p->fd_table[fd].in_use = false;
 }
 
-// modified for lab3
-bool handle_fault(struct vm_entry *vme)
+bool handle_fault (struct vm_entry *vme)
 {
   bool success = false;
 
-  lock_acquire(&frame_lock);
+  frame_lock_acquire();
   struct frame* frame = alloc_frame (PAL_USER);
   if (frame == NULL){
-    lock_release(&frame_lock);
+    frame_lock_release();
     return false;
   }
 
   frame->vme = vme;
-  switch(vme->type)
-  {
-    case VM_BIN:
-      success = load_file(frame->page_addr, vme);
-      break;
-    case VM_FILE:
-      success = load_file(frame->page_addr, vme);
-      break;
-    case VM_ANON:
-      success = swap_in(vme->swap_slot, frame->page_addr);
-      break;
-    default:
-      lock_release(&frame_lock);
-      return false;
-  }
 
-  if (!success)
-  {
+  if (vme->type == VM_ANON)
+    success = swap_in(vme->swap_slot, frame->page_addr);
+
+  else
+    success = load_file(frame->page_addr, vme);
+
+  if (!success) {
     free_frame(frame->page_addr);
-    lock_release(&frame_lock);
+    frame_lock_release();
     return false;
   }
 
   success = install_page(vme->vaddr, frame->page_addr, vme->is_writable);
 
-  if (!success)
-  {
+  if (!success) {
     free_frame(frame->page_addr);
-    lock_release(&frame_lock);
+    frame_lock_release();
     return false;
   }
 
   vme->is_on_memory = true;
-  lock_release(&frame_lock);
+  frame_lock_release();
   return true;
 }
 
-
-bool expand_stack(void *addr)
+bool expand_stack (void *addr)
 {
   struct frame *frame;
 	void *upage = pg_round_down(addr);
+  struct vm_entry *vme;
   bool success = false;
 	
-  lock_acquire(&frame_lock);
+  frame_lock_acquire();
 	frame = alloc_frame(PAL_USER | PAL_ZERO);
   if (!frame) {
-    lock_release(&frame_lock);
+    frame_lock_release();
     return success;
   }
 
@@ -846,22 +840,21 @@ bool expand_stack(void *addr)
   if (!success)
   {
     free_frame(frame->page_addr);
-    lock_release(&frame_lock);
+    frame_lock_release();
     return success;
   }
 
-  else
-  {
-    frame->vme = vme_construct(VM_ANON, upage, true, true, NULL, 0, 0, 0);
-    if (!frame->vme)
-    {
-      lock_release(&frame_lock);
-      return false;
-    }
-
-    vme_insert(&thread_current()->vm, frame->vme);
-    lock_release(&frame_lock);
-    return success;
+  vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
+  if (vme == NULL){
+    frame_lock_release();
+    return false;
   }
-    
+
+  init_vme(vme, VM_ANON, upage, true, true, NULL, 0, 0, 0);
+  frame->vme = vme;
+
+  vme_insert(&thread_current()->vm, frame->vme);
+  frame_lock_release();
+  return success;
+
 }

@@ -120,10 +120,10 @@ void evict_frame()
 		case VM_FILE:
 			if(dirty)
 			{	
-				lock_acquire(&file_lock);
+				file_lock_acquire();
 				file_seek(vme->file, vme->offset);
 				file_write(vme->file, frame->page_addr, vme->read_bytes);
-				lock_release(&file_lock);
+				file_lock_release();
 			}
 			break;
 
