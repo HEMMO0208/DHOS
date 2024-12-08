@@ -5,6 +5,10 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/syscall.h"
+#include "threads/vaddr.h"
+#include "vm/frame.h"
+
+#define STACK_LOWER_BOUND (0xC0000000 - 0x800000)
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -109,6 +113,11 @@ kill (struct intr_frame *f)
     }
 }
 
+static bool is_address_vaild(void *addr, void *esp)
+{
+   return (addr >= (esp-32)) && (addr >= STACK_LOWER_BOUND);
+}
+
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -127,6 +136,7 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
+  int success;
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -148,25 +158,31 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+  
+   if(!not_present || is_kernel_vaddr(fault_addr)) 
+   {
+      frame_lock_release();
+      sys_exit(-1);
+   }
 
-  /* Kernel caused page fault by accessing user memory */
-  if(!user && check_ptr_in_user_space(fault_addr))
-  {
-   f->eip = (void *)f->eax;
-   f->eax = -1;
-   return;
-  }
-  /* User caused page fault */
-  else sys_exit(-1);
+   void *esp = f->esp;
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+   struct vm_entry *vme = vme_find(fault_addr); 
+
+   if(vme != NULL) {
+      success = handle_fault(vme);
+      
+      if(!success)
+         sys_exit(-1);
+
+      return;
+   }
+
+   if (!is_address_vaild(fault_addr, esp))
+      sys_exit(-1);
+
+   success = expand_stack(fault_addr);
+   
+   if (!success)
+      sys_exit(-1);
 }
-

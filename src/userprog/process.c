@@ -19,11 +19,16 @@
 #include "threads/vaddr.h"
 #include "lib/user/syscall.h"
 
+#include "vm/frame.h"
+#include "vm/page.h"
+#include "vm/swap.h"
+
 /*---------------------------------------------------------------------------*/
 /* Process Control Block */
 
 static struct lock pid_lock;
-static struct lock file_lock;
+struct lock file_lock;
+extern struct lock frame_lock;
 
 /*---------------------------------------------------------------------------*/
 
@@ -142,6 +147,8 @@ start_process (void *file_name_)
   uint32_t argc = 0;
   success = true;
   t = thread_current();
+
+  vm_init(&t->vm);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -601,6 +608,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  struct thread *cur = thread_current();
+  struct vm_entry *vme;
+
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -610,31 +620,22 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
+      // struct vm_entry *vme = vme_construct(VM_BIN, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
+      vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
+      if (vme == NULL)
         return false;
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      init_vme(vme, VM_BIN, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
+      vme_insert(&cur->vm, vme);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      ofs += page_read_bytes;
       upage += PGSIZE;
     }
+
   return true;
 }
 
@@ -643,18 +644,34 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-  uint8_t *kpage;
+  struct frame* frame;
   bool success = false;
+  uint8_t *vaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
+  lock_acquire(&frame_lock);
+  frame = alloc_frame(PAL_USER | PAL_ZERO);
+
+  if (frame == NULL || frame->page_addr == NULL){
+    free_frame (frame->page_addr);
+    lock_release(&frame_lock);
+    return false;
+  }
+  
+  success = install_page (vaddr, frame->page_addr, true);
+  if (success)
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
-    }
+      frame->vme = vme_construct(VM_ANON, vaddr, true, true, NULL, NULL, 0, 0);
+      if (!frame->vme)
+      {
+        lock_release(&frame_lock);
+        return false;
+      }
+        
+      vme_insert(&thread_current()->vm, frame->vme);
+      *esp = PHYS_BASE;
+    } 
+
+  lock_release(&frame_lock);
   return success;
 }
 
@@ -759,4 +776,92 @@ remove_fd (struct process *p, int fd)
   if(!(2 <= fd && fd < OPEN_MAX)) return;
   /* Intended not to check the validity */
   p->fd_table[fd].in_use = false;
+}
+
+// modified for lab3
+bool handle_fault(struct vm_entry *vme)
+{
+  bool success = false;
+
+  lock_acquire(&frame_lock);
+  struct frame* frame = alloc_frame (PAL_USER);
+  if (frame == NULL){
+    lock_release(&frame_lock);
+    return false;
+  }
+
+  frame->vme = vme;
+  switch(vme->type)
+  {
+    case VM_BIN:
+      success = load_file(frame->page_addr, vme);
+      break;
+    case VM_FILE:
+      success = load_file(frame->page_addr, vme);
+      break;
+    case VM_ANON:
+      success = swap_in(vme->swap_slot, frame->page_addr);
+      break;
+    default:
+      lock_release(&frame_lock);
+      return false;
+  }
+
+  if (!success)
+  {
+    free_frame(frame->page_addr);
+    lock_release(&frame_lock);
+    return false;
+  }
+
+  success = install_page(vme->vaddr, frame->page_addr, vme->is_writable);
+
+  if (!success)
+  {
+    free_frame(frame->page_addr);
+    lock_release(&frame_lock);
+    return false;
+  }
+
+  vme->is_on_memory = true;
+  lock_release(&frame_lock);
+  return true;
+}
+
+
+bool expand_stack(void *addr)
+{
+  struct frame *frame;
+	void *upage = pg_round_down(addr);
+  bool success = false;
+	
+  lock_acquire(&frame_lock);
+	frame = alloc_frame(PAL_USER | PAL_ZERO);
+  if (!frame) {
+    lock_release(&frame_lock);
+    return success;
+  }
+
+  success = install_page(upage, frame->page_addr, true);
+  if (!success)
+  {
+    free_frame(frame->page_addr);
+    lock_release(&frame_lock);
+    return success;
+  }
+
+  else
+  {
+    frame->vme = vme_construct(VM_ANON, upage, true, true, NULL, 0, 0, 0);
+    if (!frame->vme)
+    {
+      lock_release(&frame_lock);
+      return false;
+    }
+
+    vme_insert(&thread_current()->vm, frame->vme);
+    lock_release(&frame_lock);
+    return success;
+  }
+    
 }
