@@ -460,13 +460,13 @@ sys_mmap(int fd, void* addr)
   int bytes_remain;
   size_t offset = 0;
   
-  struct mmap_elem *mfe;
+  struct mmap_elem *me;
   struct file *file;
   struct thread *cur = thread_current();
   struct process *p = cur->process_ptr;
 
-	mfe = (struct mmap_elem *)malloc(sizeof(struct mmap_elem));
-  if (!mfe) 
+	me = (struct mmap_elem *)malloc(sizeof(struct mmap_elem));
+  if (!me) 
     return -1;
 
   file_lock_acquire();
@@ -475,12 +475,12 @@ sys_mmap(int fd, void* addr)
   file_lock_release();
 
   if (bytes_remain == 0){
-    free(mfe);
+    free(me);
     return -1;
   }
 
   mid = cur->next_mid++;
-	init_mfe(mfe, file, mid);
+	init_me(me, file, mid);
   
 	while(bytes_remain > 0) {
     if (vme_find(addr)) 
@@ -495,7 +495,7 @@ sys_mmap(int fd, void* addr)
 
     init_vme(vme, PAGE_MMAP, addr, true, false, file, offset, page_read_bytes, page_zero_bytes);
 
-    list_push_back(&mfe->vmes, &vme->mmap_elem);
+    list_push_back(&me->vmes, &vme->mmap_elem);
     vme_insert(&cur->vm, vme);
 		
     addr += PGSIZE;
@@ -503,19 +503,19 @@ sys_mmap(int fd, void* addr)
     bytes_remain -= PGSIZE;
 	}
 
-  list_push_back(&cur->mmap_list, &mfe->elem);
-	return mfe->mid;
+  list_push_back(&cur->mmap_list, &me->elem);
+	return me->mid;
 }
 
 static void 
 sys_munmap (mapid_t mid)
 {
-	struct mmap_elem *mfe = mfe_find(mid);
-  if(mfe == NULL) return;
+	struct mmap_elem *me = me_find(mid);
+  if(me == NULL) return;
 
   struct thread *cur = thread_current();
-  struct list_elem *it = list_begin(&mfe->vmes);
-  struct list_elem *end = list_end(&mfe->vmes);
+  struct list_elem *it = list_begin(&me->vmes);
+  struct list_elem *end = list_end(&me->vmes);
 
 	for (it; it != end;) {
     struct vm_entry *vme = list_entry(it, struct vm_entry, mmap_elem);
@@ -537,6 +537,6 @@ sys_munmap (mapid_t mid)
     it = list_remove(it);
   }
 
-  list_remove(&mfe->elem);
-  free(mfe); 
+  list_remove(&me->elem);
+  free(me); 
 }

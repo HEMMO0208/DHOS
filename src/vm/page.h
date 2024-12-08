@@ -60,7 +60,7 @@ void init_vme(
 	size_t read_bytes, 
 	size_t zero_bytes);
 
-void *mfe_find (mapid_t mid);
-void init_mfe (struct mmap_elem *mfe, struct file* file, mapid_t mid);
+struct mmap_elem *me_find (mapid_t mid);
+void init_me (struct mmap_elem *me, struct file* file, mapid_t mid);
 
 #endif

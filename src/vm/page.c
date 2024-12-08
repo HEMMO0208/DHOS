@@ -134,23 +134,23 @@ void init_vme(
 	vme->zero_bytes = zero_bytes;
 }
 
-void *mfe_find (mapid_t mid) {
+struct mmap_elem *me_find (mapid_t mid) {
 	struct thread *cur = thread_current();
   	struct list_elem *it = list_begin(&cur->mmap_list);
   	struct list_elem *end = list_end(&cur->mmap_list);
 	
 	for (it; it != end; it = list_next(it)) {
-		struct mmap_elem* mfe = list_entry(it, struct mmap_elem, elem);
+		struct mmap_elem* me = list_entry(it, struct mmap_elem, elem);
 
-		if (mfe->mid == mid) 
-			break;
+		if (me->mid == mid) 
+			return me;
 	}
 
 	return NULL;
 }
 
-void init_mfe(struct mmap_elem *mfe, struct file* file, mapid_t mid) {
-	list_init(&mfe->vmes);
-	mfe->file = file;
-	mfe->mid = mid;
+void init_me(struct mmap_elem *me, struct file* file, mapid_t mid) {
+	list_init(&me->vmes);
+	me->file = file;
+	me->mid = mid;
 }
