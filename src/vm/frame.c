@@ -30,14 +30,14 @@ void frame_lock_release(){
 
 void frame_insert(struct frame *frame)
 {
-    list_push_back(&frame_table, &frame->ft_elem);
+    list_push_back(&frame_table, &frame->elem);
 }
 
 void frame_delete(struct frame *frame)
 {	
-	if (frame_clock != &frame->ft_elem)
-		list_remove(&frame->ft_elem);
-	else if (frame_clock == &frame->ft_elem)
+	if (frame_clock != &frame->elem)
+		list_remove(&frame->elem);
+	else if (frame_clock == &frame->elem)
 		frame_clock = list_remove(frame_clock);
 }
 
@@ -46,7 +46,7 @@ struct frame* frame_find(void* addr)
     struct list_elem *e;
 	for (e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
-		struct frame *frame = list_entry(e, struct frame, ft_elem);
+		struct frame *frame = list_entry(e, struct frame, elem);
 		if ((frame->page_addr) == addr)
 		{
 			return frame;
@@ -60,7 +60,7 @@ struct frame* find_frame_for_vaddr(void* vaddr)
     struct list_elem *e;
 	for (e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
-		struct frame *frame = list_entry(e, struct frame, ft_elem);
+		struct frame *frame = list_entry(e, struct frame, elem);
 		if ((frame->vme->vaddr) == vaddr)
 			return frame;
 	}
@@ -101,7 +101,7 @@ void free_frame(void *addr)
 	struct frame *frame = frame_find(addr);
 	if (frame)
 	{	
-		frame->vme->is_loaded = false;
+		frame->vme->is_on_memory = false;
 		pagedir_clear_page(frame->thread->pagedir, frame->vme->vaddr);
 		palloc_free_page(frame->page_addr);
 		frame_delete(frame);
@@ -116,6 +116,8 @@ void evict_frame()
 	
 	// 1. victim frame 찾기
   	struct frame *frame = find_victim();
+	frame->pinned = true;
+
 	// 2. 해당 frame의 dirty bit 확인
   	bool dirty = pagedir_is_dirty(frame->thread->pagedir, frame->vme->vaddr);
 	 
@@ -146,7 +148,8 @@ void evict_frame()
 	pagedir_clear_page(frame->thread->pagedir, frame->vme->vaddr);
 	palloc_free_page(frame->page_addr);
 	frame_delete(frame);
-	frame->vme->is_loaded = false;
+	frame->pinned = false;
+	frame->vme->is_on_memory = false;
 	free(frame);
 	
 }
@@ -179,7 +182,7 @@ struct frame* find_victim()
 			e = frame_clock;
 		}
 		
-		frame = list_entry(e, struct frame, ft_elem);
+		frame = list_entry(e, struct frame, elem);
 		// access bit 확인 -> 0이면 바로 Return
 		if(!frame->pinned)
 		{
@@ -196,7 +199,6 @@ struct frame* find_victim()
 		
 	}
 }
-
 
 void frame_pin(void *kaddr)
 {

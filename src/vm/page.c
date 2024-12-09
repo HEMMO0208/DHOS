@@ -83,7 +83,7 @@ void vm_destroy_func(struct hash_elem *e, void *aux UNUSED)
 	frame_lock_acquire();
 	if(vme)
 	{
-		if(vme->is_loaded)
+		if(vme->is_on_memory)
 		{
 			free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
 		}
@@ -102,6 +102,8 @@ void vm_destroy (struct hash *vm)
 
 bool load_file (void* addr, struct vm_entry *vme)
 {
+	frame_pin(addr);
+	
 	// 1. file_read_at으로 physical page에 read_bytes만큼 read
 	file_lock_acquire();
 	int byte_read = file_read_at(vme->file, addr, vme->read_bytes, vme->offset);
@@ -111,12 +113,14 @@ bool load_file (void* addr, struct vm_entry *vme)
 
 	// 2. zero_bytes만큼 남는 부분을‘0’으로 채우기
 	memset(addr + vme->read_bytes, 0, vme->zero_bytes);
+
+	frame_unpin(addr);
 	return true;
 
 }
 
 
-struct vm_entry *vme_construct ( uint8_t type, void *vaddr, bool writable, bool is_loaded, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes)
+struct vm_entry *vme_construct ( enum page_type type, void *vaddr, bool is_writable, bool is_on_memory, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes)
 {
 	struct vm_entry* vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
 	if (!vme) 
@@ -125,8 +129,8 @@ struct vm_entry *vme_construct ( uint8_t type, void *vaddr, bool writable, bool 
 	// vm_entry struct의 member variable 설정
 	vme->type = type;
 	vme->vaddr = vaddr;
-	vme->writable = writable;
-	vme->is_loaded = is_loaded;
+	vme->is_writable = is_writable;
+	vme->is_on_memory = is_on_memory;
 	vme->file = file;
 	vme->offset = offset;
 	vme->read_bytes = read_bytes;
