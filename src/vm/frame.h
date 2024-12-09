@@ -13,7 +13,7 @@ struct frame
 	void *page_addr; 
 	struct vm_entry *vme;
 	struct thread *thread;
-	struct list_elem ft_elem; 
+	struct list_elem elem; 
 	bool pinned;
 };
 

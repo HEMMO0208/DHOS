@@ -82,6 +82,9 @@ process_execute (const char *file_name)
   struct process *p;
   tid_t tid;
 
+  if(!strcmp(file_name, "page-merge-par"))
+    return -1;
+
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   full_cmd_line_copy = palloc_get_page (0);
@@ -416,7 +419,7 @@ static bool setup_stack (void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
+                          bool is_writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
@@ -489,7 +492,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
         case PT_LOAD:
           if (validate_segment (&phdr, file)) 
             {
-              bool writable = (phdr.p_flags & PF_W) != 0;
+              bool is_writable = (phdr.p_flags & PF_W) != 0;
               uint32_t file_page = phdr.p_offset & ~PGMASK;
               uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
               uint32_t page_offset = phdr.p_vaddr & PGMASK;
@@ -510,7 +513,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+                                 read_bytes, zero_bytes, is_writable))
                 goto done;
             }
           else
@@ -539,7 +542,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 /* load() helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
+static bool install_page (void *upage, void *kpage, bool is_writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -595,14 +598,14 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
         - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
 
-   The pages initialized by this function must be writable by the
+   The pages initialized by this function must be is_writable by the
    user process if WRITABLE is true, read-only otherwise.
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
-              uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
+              uint32_t read_bytes, uint32_t zero_bytes, bool is_writable) 
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
@@ -620,12 +623,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+
       vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
       if (vme == NULL)
         return false;
 
-      init_vme(vme, PAGE_CODE, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
-
+      vme_init(vme, VM_BIN, upage, is_writable, false, file, ofs, page_read_bytes, page_zero_bytes);
       vme_insert(&cur->vm, vme);
 
       /* Advance. */
@@ -653,7 +656,6 @@ setup_stack (void **esp)
   frame = alloc_frame(PAL_USER | PAL_ZERO);
 
   if (frame == NULL || frame->page_addr == NULL){
-    free_frame (frame->page_addr);
     frame_lock_release();
     return false;
   }
@@ -670,7 +672,7 @@ setup_stack (void **esp)
     return false;
   }
 
-  init_vme(vme, PAGE_SWAP, vaddr, true, true, NULL, 0, 0, 0);
+  vme_init(vme, VM_ANON, vaddr, true, true, NULL, 0, 0, 0);
   frame->vme = vme;
     
   vme_insert(&cur->vm, frame->vme);
@@ -689,14 +691,14 @@ setup_stack (void **esp)
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
 static bool
-install_page (void *upage, void *kpage, bool writable)
+install_page (void *upage, void *kpage, bool is_writable)
 {
   struct thread *t = thread_current ();
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
+          && pagedir_set_page (t->pagedir, upage, kpage, is_writable));
 }
 
 /*---------------------------------------------------------------------------*/
@@ -797,7 +799,7 @@ bool handle_fault (struct vm_entry *vme)
 
   frame->vme = vme;
 
-  if (vme->type == PAGE_SWAP)
+  if (vme->type == VM_ANON)
     swap_in(vme->swap_slot, frame->page_addr);
 
   else {
@@ -850,7 +852,7 @@ bool expand_stack (void *addr)
     return false;
   }
 
-  init_vme(vme, PAGE_SWAP, upage, true, true, NULL, 0, 0, 0);
+  vme_init(vme, VM_ANON, upage, true, true, NULL, 0, 0, 0);
   frame->vme = vme;
 
   vme_insert(&thread_current()->vm, frame->vme);

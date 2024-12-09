@@ -5,16 +5,14 @@
 #include "threads/thread.h"
 #include "threads/malloc.h"
 #include "filesys/file.h"
+#include "userprog/process.h"
+#include "vm/frame.h"
 #include "vm/swap.h"
 
-static unsigned vm_hash_fn (const struct hash_elem *e, void *aux);
-static bool vm_compare_fn (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+static unsigned vm_hash_fn (const struct hash_elem *e, void *aux UNUSED);
+static bool vm_compare_fn (const struct hash_elem *l, const struct hash_elem *r, void *aux UNUSED);
 
-extern struct lock file_lock;
-extern struct lock frame_lock;
-
-// vm (hash table) initialization
-void vm_init (struct hash *vm) //
+void vm_init (struct hash *vm)
 {
 	hash_init(vm, vm_hash_fn, vm_compare_fn, NULL);
 }
@@ -36,19 +34,6 @@ static bool vm_compare_fn (const struct hash_elem *l, const struct hash_elem *r,
 
 	return  vl < vr;
 }	
-
-void vm_destroy_fn(struct hash_elem *e, void *aux UNUSED)
-{
-	struct vm_entry *vme = hash_entry(e, struct vm_entry, elem);
-	frame_lock_acquire();
-
-	if(vme->is_on_memory)
-		free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
-
-	free(vme);
-
-	frame_lock_release();
-}
 
 bool vme_insert (struct hash *vm, struct vm_entry *vme)
 {	
@@ -73,7 +58,6 @@ bool vme_delete (struct hash *vm, struct vm_entry *vme)
 	frame_lock_release();
 
 	return true;
-
 }	
 
 struct vm_entry *vme_find (void *vaddr)
@@ -89,6 +73,19 @@ struct vm_entry *vme_find (void *vaddr)
 		return hash_entry(it, struct vm_entry, elem);
 
 	return NULL;
+}
+
+void vm_destroy_fn(struct hash_elem *e, void *aux UNUSED)
+{
+	struct vm_entry *vme = hash_entry(e, struct vm_entry, elem);
+	frame_lock_acquire();
+
+	if(vme->is_on_memory)
+		free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
+
+	free(vme);
+
+	frame_lock_release();
 }
 
 void vm_destroy (struct hash *vm)
@@ -113,7 +110,7 @@ bool load_file (void* addr, struct vm_entry *vme)
 
 }
 
-void init_vme(
+void vme_init (
 	struct vm_entry *vme, 
 	enum page_type type, 
 	void *vaddr, 
@@ -150,7 +147,7 @@ struct mmap_elem *me_find (mapid_t mid) {
 }
 
 void init_me(struct mmap_elem *me, struct file* file, mapid_t mid) {
-	list_init(&me->vmes);
+	list_init(&me->vme_list);
 	me->file = file;
 	me->mid = mid;
 }

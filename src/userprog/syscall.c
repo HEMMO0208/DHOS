@@ -214,10 +214,12 @@ sys_exit (int status)
       remove_fd (cur->process_ptr, i);
     }
   }
+
   for (i = 0; i < cur->next_mid; ++i){
     sys_munmap(i);
   }
   vm_destroy(&cur->vm);
+
   sema_up (&(cur->process_ptr->exit_code_sema));
   thread_exit ();
   NOT_REACHED ();
@@ -467,9 +469,13 @@ sys_mmap(int fd, void* addr)
   size_t offset = 0;
   
   struct mmap_elem *me;
+  struct vm_entry *vme;
   struct file *file;
   struct thread *cur = thread_current();
   struct process *p = cur->process_ptr;
+
+  if(addr == NULL || pg_ofs(addr))
+    return -1;
 
 	me = (struct mmap_elem *)malloc(sizeof(struct mmap_elem));
   if (!me) 
@@ -495,13 +501,12 @@ sys_mmap(int fd, void* addr)
     size_t page_read_bytes = bytes_remain < PGSIZE ? bytes_remain : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    struct vm_entry* vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
+    vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
     if (vme == NULL) 
       return false;
 
-    init_vme(vme, PAGE_MMAP, addr, true, false, file, offset, page_read_bytes, page_zero_bytes);
-
-    list_push_back(&me->vmes, &vme->mmap_elem);
+    vme_init(vme, VM_FILE, addr, true, false, file, offset, page_read_bytes, page_zero_bytes);
+    list_push_back(&me->vme_list, &vme->m_elem);
     vme_insert(&cur->vm, vme);
 		
     addr += PGSIZE;
@@ -516,32 +521,34 @@ sys_mmap(int fd, void* addr)
 static void 
 sys_munmap (mapid_t mid)
 {
-	struct mmap_elem *me = me_find(mid);
-  if(me == NULL) return;
-
   struct thread *cur = thread_current();
-  struct list_elem *it = list_begin(&me->vmes);
-  struct list_elem *end = list_end(&me->vmes);
+  struct mmap_elem *mfe = me_find(mid);
+  if (mfe == NULL) 
+    return;
+
+  struct list_elem *it = list_begin(&mfe->vme_list);
+  struct list_elem *end = list_end(&mfe->vme_list);
 
 	for (it; it != end;) {
-    struct vm_entry *vme = list_entry(it, struct vm_entry, mmap_elem);
-    bool is_dirty = pagedir_is_dirty(cur->pagedir, vme->vaddr);
+    struct vm_entry *vme = list_entry(it, struct vm_entry, m_elem);
+    bool is_dirty = pagedir_is_dirty(thread_current()->pagedir, vme->vaddr);
 
     if(vme->is_on_memory && is_dirty) {
       file_lock_acquire();
-      file_write_at(vme->file, vme->vaddr, vme->read_bytes, vme->offset);
+      file_seek(vme->file, vme->offset);
+      file_write(vme->file, vme->vaddr, vme->read_bytes);
       file_lock_release();
 
       frame_lock_acquire();
-      free_frame(pagedir_get_page(cur->pagedir, vme->vaddr));
+      free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
       frame_lock_release();
     }
 
     vme->is_on_memory = false;
-    vme_delete(&cur->vm, vme);
     it = list_remove(it);
+    vme_delete(&thread_current()->vm, vme);
   }
 
-  list_remove(&me->elem);
-  free(me); 
+  list_remove(&mfe->elem);
+  free(mfe); 
 }
