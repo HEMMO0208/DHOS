@@ -462,105 +462,93 @@ sys_close(int fd)
 }
 
 static mapid_t 
-sys_mmap (int fd, void* addr)
+sys_mmap(int fd, void* addr)
 {
-  if(is_kernel_vaddr(addr))
-    sys_exit(-1);
-  // addr이 0인 경우, addr이 page 정렬되지 않은 경우
-  if(!addr || pg_ofs(addr) != 0 || (int)addr%PGSIZE !=0)
+  mapid_t mid;
+  int bytes_remain;
+  size_t offset = 0;
+  
+  struct mmap_elem *me;
+  struct vm_entry *vme;
+  struct file *file;
+  struct thread *cur = thread_current();
+  struct process *p = cur->process_ptr;
+
+  if(addr == NULL || pg_ofs(addr))
     return -1;
 
-  // for vm_entry
-  int file_remained;
-  size_t offset = 0;
+	me = (struct mmap_elem *)malloc(sizeof(struct mmap_elem));
+  if (!me) 
+    return -1;
 
-  struct process *cur = thread_current()->process_ptr;
-
-  // 1. mmap_elem 구조체 생성 및 메모리 할당
-	struct mmap_elem *mfe = (struct mmap_elem *)malloc(sizeof(struct mmap_elem));
-  if (!mfe) return -1;   
-	memset(mfe, 0, sizeof(struct mmap_elem));
-
-	// 2. file open
   file_lock_acquire();
-  struct file* file = file_reopen(cur->fd_table[fd].file);
-  file_remained = file_length(file);
+  file = file_reopen(p->fd_table[fd].file);
+  bytes_remain = file_length(file);
   file_lock_release();
-  // fd로 열린 파일의 길이가 0바이트인 경우
-  if (!file_remained) 
-  {
+
+  if (bytes_remain == 0){
+    free(me);
     return -1;
   }
 
-
-	// 3. vm_entry 할당
-	list_init(&mfe->vme_list);	
+  mid = cur->next_mid++;
+	init_me(me, file, mid);
   
-	while(file_remained > 0)// file 다 읽을 때 까지 반복
-	{
-		// vm entry 할당
-    if (vme_find(addr)) return -1;
+	while(bytes_remain > 0) {
+    if (vme_find(addr)) 
+      return -1;
 
-    size_t page_read_bytes = file_remained < PGSIZE ? file_remained : PGSIZE;
+    size_t page_read_bytes = bytes_remain < PGSIZE ? bytes_remain : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    struct vm_entry* vme = vme_construct(VM_FILE, addr, true, false, file, offset, page_read_bytes, page_zero_bytes);
-    if (!vme) 
+    vme = (struct vm_entry*)malloc(sizeof(struct vm_entry));
+    if (vme == NULL) 
       return false;
 
-		// 2. vme_list에 mmap_elem과 연결된 vm entry 추가
-    list_push_back(&mfe->vme_list, &vme->m_elem);
-		// 3. current thread에 대해 vme insert
-    vme_insert(&thread_current()->vm, vme);
+    vme_init(vme, VM_FILE, addr, true, false, file, offset, page_read_bytes, page_zero_bytes);
+    list_push_back(&me->vme_list, &vme->m_elem);
+    vme_insert(&cur->vm, vme);
 		
-    // 4. file addr, offset 업데이트 (page size만큼)
     addr += PGSIZE;
     offset += PGSIZE;
-		// 5. file에 남은 길이 업데이트 (page size만큼)
-    file_remained -= PGSIZE;
+    bytes_remain -= PGSIZE;
 	}
 
-  // 4. mmap_list, mmap_next 관리
-  mfe->mid = thread_current()->next_mid++;
-  list_push_back(&thread_current()->mmap_list, &mfe->elem);
-  mfe->file = file;
-	return mfe->mid;
+  list_push_back(&cur->mmap_list, &me->elem);
+	return me->mid;
 }
-
 
 static void 
 sys_munmap (mapid_t mid)
 {
-  // 1. thread의 mmap_list에서 mapid에 해당하는 mfe 찾기
-	struct mmap_elem *mfe = NULL;
-  struct list_elem *e;
-  for (e = list_begin(&thread_current()->mmap_list); e != list_end(&thread_current()->mmap_list); e = list_next(e))
-  {
-    mfe = list_entry (e, struct mmap_elem, elem);
-    if (mfe->mid == mid) break;
-  }
-  if(mfe == NULL) return;
+  struct thread *cur = thread_current();
+  struct mmap_elem *mfe = me_find(mid);
+  if (mfe == NULL) 
+    return;
 
-	// 2. 해당 mfe의 vme_list를 돌면서 vme를 지우기
-	for (e = list_begin(&mfe->vme_list); e != list_end(&mfe->vme_list);)
-  {
-    struct vm_entry *vme = list_entry(e, struct vm_entry, m_elem);
-    if(vme->is_on_memory && (pagedir_is_dirty(thread_current()->pagedir, vme->vaddr)))
-    {
+  struct list_elem *it = list_begin(&mfe->vme_list);
+  struct list_elem *end = list_end(&mfe->vme_list);
+
+	for (it; it != end;) {
+    struct vm_entry *vme = list_entry(it, struct vm_entry, m_elem);
+    bool is_dirty = pagedir_is_dirty(thread_current()->pagedir, vme->vaddr);
+
+    if(vme->is_on_memory && is_dirty) {
       file_lock_acquire();
-      file_write_at(vme->file, vme->vaddr, vme->read_bytes, vme->offset);
+      file_seek(vme->file, vme->offset);
+      file_write(vme->file, vme->vaddr, vme->read_bytes);
       file_lock_release();
 
       frame_lock_acquire();
       free_frame(pagedir_get_page(thread_current()->pagedir, vme->vaddr));
       frame_lock_release();
     }
+
     vme->is_on_memory = false;
-    e = list_remove(e);
+    it = list_remove(it);
     vme_delete(&thread_current()->vm, vme);
   }
-	// 4. mfe를 mmap_list에서 제거
+
   list_remove(&mfe->elem);
-  // 5. mfe 구조체 자체를 free
   free(mfe); 
 }

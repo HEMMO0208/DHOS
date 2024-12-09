@@ -46,5 +46,20 @@ bool vme_delete (struct hash *vm, struct vm_entry *vme);
 void vm_destroy_func(struct hash_elem *e, void *aux);
 void vm_destroy (struct hash *vm);
 bool load_file (void* kaddr, struct vm_entry *fte);
-struct vm_entry *vme_construct ( enum page_type type, void *vaddr, bool is_writable, bool is_on_memory, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes);
+
+void vme_init (
+	struct vm_entry *vme, 
+	enum page_type type, 
+	void *vaddr, 
+	bool writable, 
+	bool is_loaded, 
+	struct file* file, 
+	size_t offset, 
+	size_t read_bytes, 
+	size_t zero_bytes);
+
+struct mmap_elem *me_find (mapid_t mid);
+void init_me (struct mmap_elem *me, struct file* file, mapid_t mid);
+
 #endif
+
